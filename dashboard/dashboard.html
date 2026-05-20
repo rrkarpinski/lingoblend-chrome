@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LingoBlend Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <header>
+  <img src="../icons/icon48.png" class="logo" alt="LingoBlend">
+    <span class="app-name">LingoBlend</span>
+    <span class="version" id="version-label"></span>
+    <span class="header-profile-name" id="header-profile-name"></span>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab" data-tab="profiles">Profiles</button>
+    <button class="tab active" data-tab="analytics">Analytics</button>
+    <button class="tab" data-tab="vocab">Vocabulary</button>
+    <button class="tab" data-tab="blacklist">Muted sites</button>
+  </nav>
+
+  <!-- ═══ PROFILES TAB (new) ═══════════════════════════════════════════════ -->
+  <section class="tab-content" id="tab-profiles">
+    <div class="profiles-toolbar">
+      <button class="btn-export" id="btn-new-profile">New profile +</button>
+      <button class="btn-export" id="btn-import-profile">Import profile ←</button>
+      <input type="file" id="profile-file-input" accept=".json" hidden>
+    </div>
+    <div class="profile-cards" id="profile-cards"></div>
+  </section>
+
+  <!-- ═══ ANALYTICS TAB (unchanged) ═══════════════════════════════════════ -->
+  <section class="tab-content active" id="tab-analytics">
+    <div class="summary-cards" id="summary-cards"></div>
+    <p class="section-title">
+      Missing links <span class="hint">— the most contextually useful words to add to your vocab next</span>
+    </p>
+    <div class="missing-cloud" id="missing-cloud"></div>
+    <p class="section-title">Session history</p>
+    <div class="history-list" id="history-list"></div>
+  </section>
+
+  <!-- ═══ VOCABULARY TAB (unchanged) ══════════════════════════════════════ -->
+  <section class="tab-content" id="tab-vocab">
+    <div class="toolbar">
+      <input class="search-input" id="vocab-search" type="text" placeholder="Search…">
+      <span class="count-badge" id="vocab-count-badge"></span>
+      <button class="btn-import-dash" id="btn-import-dash">Import</button>
+      <button class="btn-export" id="btn-export-dash">Export</button>
+      <input type="file" id="dash-file-input" accept=".txt,.tsv,.csv" hidden>
+    </div>
+    <p class="edit-note">Click ✎ to edit a row · ✕ to delete</p>
+    <table class="data-table" id="vocab-table">
+      <thead id="vocab-thead"></thead>
+      <tbody id="vocab-tbody"></tbody>
+    </table>
+  </section>
+
+  <!-- ═══ MUTED SITES TAB (unchanged) ════════════════════════════════════ -->
+  <section class="tab-content" id="tab-blacklist">
+    <ul class="blacklist-ul" id="blacklist-ul"></ul>
+  </section>
+
+  <!-- ── Diff modal (unchanged) ────────────────────────────────────────── -->
+  <div class="modal-overlay" id="modal-diff" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title">Import preview</div>
+      <div class="modal-body" id="modal-diff-body"></div>
+      <div class="modal-actions modal-actions--col">
+        <button class="modal-confirm" id="diff-add-new">Add new only</button>
+        <button class="modal-confirm" id="diff-add-update">Add + update</button>
+        <button class="modal-warn" id="diff-replace">Full replace</button>
+        <button class="modal-cancel" id="diff-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── New profile modal (new) ──────────────────────────────────────── -->
+  <div class="modal-overlay" id="modal-new-profile" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title">New profile</div>
+      <div class="modal-body">
+
+        <div class="field">
+          <label for="new-profile-name">Name</label>
+          <input class="edit-input" id="new-profile-name" placeholder="e.g. Rafał">
+        </div>
+
+        <div class="field">
+          <label for="new-profile-native">Native language</label>
+          <select class="edit-input" id="new-profile-native">
+            <option value="pl">PL</option>
+            <option value="en">EN</option>
+            <option value="es">ES</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="new-profile-target">Target language</label>
+          <select class="edit-input" id="new-profile-target">
+            <option value="en">EN</option>
+            <option value="pl">PL</option>
+            <option value="es">ES</option>
+          </select>
+        </div>
+
+      </div>
+      <div class="modal-actions">
+        <button class="modal-confirm" id="btn-create-profile-confirm">Create</button>
+        <button class="modal-cancel" id="btn-create-profile-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+  
+  <script src="dashboard.js"></script>
+</body>
+</html>
