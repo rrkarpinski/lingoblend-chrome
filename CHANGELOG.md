@@ -1,5 +1,31 @@
 # LingoBlend — Changelog
 
+## [0.6.0] — 2026-05-21
+### Added
+- **Inflected forms support** — vocab col3 (comma-separated) stores inflected forms of
+  the target word (e.g. all Polish cases of a noun). The Aho-Corasick automaton is now
+  built over all forms; if col3 is absent or empty, falls back to col2 translations as
+  before. Any matched form is substituted with the same target word. Tooltip continues
+  to show the col2 translations string.
+- **Function word filtering at import** — new `function-wordlists.js` defines ~350
+  function words across EN, PL, ES (prepositions, conjunctions, pronouns, auxiliaries,
+  determiners, adverbs). Applied at import time only; the automaton never contains
+  function words. Rules: col1 function word → drop row; col2 translations filtered
+  individually → drop row if all removed; col3 forms filtered individually.
+- Import diff modal now shows a function-word summary line:
+  `⊘ Function words: N rows dropped (col1) · N translations removed from N rows`.
+- **Unified import pipeline** — `vocab-import.js` new shared ES module owns all pure
+  import logic (parse, filter, diff, merge, serialise). Both `dashboard.js` and
+  `popup.js` import from it; no logic is duplicated between them.
+
+### Changed
+- `aho-corasick.js`: `addPattern()` replaced by `addEntry(entry)` — registers all
+  forms (or translations as fallback) as patterns, all pointing to the same entry.
+- `content.js`: `parseVocab` reads col3 into `forms[]`; `buildAutomaton` uses
+  `addEntry`; sentence analyser vocab set now covers all translations + forms.
+- `manifest.json`: `function-wordlists.js` added to `content_scripts` before
+  `aho-corasick.js`.
+
 ## [0.5.0] — 2026-05-20
 ### Added
 - **Profiles** — Multiple user profiles (e.g. Rafał, Tata, Mama), each with their own

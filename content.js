@@ -1,18 +1,21 @@
 /**
- * LingoBlend content script — Chrome MV3 — v0.5.0
- * Changes from v0.4.3:
- *   - nativeLanguage added to storage reads (flat key).
- *   - detectPageLanguage() added (html[lang] → meta content-language → meta name=language).
- *   - Entry point: if pageLang != nativeLang → skip, send LANG_MISMATCH; unknown → fail open.
- *   - All other code is exactly v0.4.3.
+ * LingoBlend content script — Chrome MV3 — v0.6.0
+ * Changes from v0.5.0:
+ *   - parseVocab: reads col3 (forms), splits by comma, stores forms: string[].
+ *     translations stored as string[] (comma-split). rawTransLine = translations column string.
+ *   - buildAutomaton: calls ac.addEntry(entry) instead of ac.addPattern().
+ *   - processTextNode: destructures entry from hit; uses entry.target as replacement,
+ *     entry.rawTransLine for tooltip.
+ *   - globalVocabNativeSet: built from all translations[] + forms[] per entry.
+ *   - All other code is exactly v0.5.0.
  */
 
-const LB_CLASS = 'lb-word';
+const LB_CLASS      = 'lb-word';
 const LB_TOOLTIP_ID = 'lb-tooltip-el';
-const LB_STYLE_ID = 'lb-styles';
+const LB_STYLE_ID   = 'lb-styles';
 
 let blendedCount = 0;
-let rawPageText = '';
+let rawPageText  = '';
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 function injectStyles() {
@@ -50,7 +53,7 @@ function injectStyles() {
 }
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
-let tooltipEl = null;
+let tooltipEl    = null;
 let dismissTimer = null;
 
 function ensureTooltip() {
@@ -84,13 +87,13 @@ function showTooltip(nativeWord, translations, anchorEl) {
     tip.style.whiteSpace = tip.scrollWidth > 300 ? 'normal' : 'nowrap';
     const tipW = Math.min(tip.scrollWidth + 24, 300);
     let left = rect.left;
-    let top = rect.bottom + 6;
+    let top  = rect.bottom + 6;
     if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
     if (left < 8) left = 8;
     if (top + 60 > window.innerHeight) top = rect.top - 6 - (tip.offsetHeight || 40);
     if (top < 8) top = 8;
     tip.style.left = left + 'px';
-    tip.style.top = top + 'px';
+    tip.style.top  = top  + 'px';
     tip.style.opacity = '1';
   });
   dismissTimer = setTimeout(hideTooltip, 4000);
@@ -122,10 +125,10 @@ function makeSeededRandom(seed) {
 }
 
 // ── Vocab parsing ─────────────────────────────────────────────────────────────
-// Delimiter: tab or semicolon only.
 // Format: target <sep> translations [<sep> forms [<sep> source [...]]]
-// First line is skipped if it looks like a header (first token is a known header keyword).
-// rawTransLine stored on span = translations column only (clean, no extra columns).
+// translations — comma-separated string (col2); stored as string[] + rawTransLine
+// forms        — comma-separated string (col3); stored as string[]. Empty → []
+// First line skipped if it looks like a header.
 const HEADER_TOKENS = new Set([
   'target','word','native','translation','translations',
   'forms','source','notes','comment','tags'
@@ -139,36 +142,43 @@ function parseVocab(text) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // Determine delimiter: tab takes priority over semicolon
-    const sep = trimmed.includes('\t') ? '\t' : ';';
+    const sep   = trimmed.includes('\t') ? '\t' : ';';
     const parts = trimmed.split(sep);
 
-    // Skip header: only on the very first non-empty line
     if (firstDataLine) {
       firstDataLine = false;
-      const firstToken = parts[0].trim().toLowerCase();
-      if (HEADER_TOKENS.has(firstToken)) continue; // skip header, don't set firstDataLine=false again
+      if (HEADER_TOKENS.has(parts[0].trim().toLowerCase())) continue;
     }
 
-    const target       = parts[0].trim();
-    const translations = (parts[1] || '').trim(); // translations column only
-    if (!target || !translations) continue;
+    const target      = parts[0].trim();
+    const rawTransLine = (parts[1] || '').trim();
+    if (!target || !rawTransLine) continue;
 
-    // native = first comma-separated token of translations (may contain spaces/dashes)
-    const native = translations.split(',')[0].trim();
-    if (!native) continue;
+    // translations: all comma-split tokens from col2
+    const translations = rawTransLine.split(',').map(t => t.trim()).filter(Boolean);
+    if (!translations.length) continue;
 
-    entries.push({ target, native, rawTransLine: translations });
+    // forms: comma-split tokens from col3; empty array if col3 absent or blank
+    const formsRaw = (parts[2] || '').trim();
+    const forms    = formsRaw ? formsRaw.split(',').map(f => f.trim()).filter(Boolean) : [];
+
+    entries.push({ target, translations, forms, rawTransLine });
   }
 
-  entries.sort((a, b) => b.native.length - a.native.length);
+  // Sort by longest pattern first (longest translation token) for greedy matching preference
+  entries.sort((a, b) => {
+    const aMax = Math.max(...(a.forms.length ? a.forms : a.translations).map(s => s.length));
+    const bMax = Math.max(...(b.forms.length ? b.forms : b.translations).map(s => s.length));
+    return bMax - aMax;
+  });
+
   return entries;
 }
 
 function buildAutomaton(entries) {
   const ac = new AhoCorasick();
-  for (const { target, native, rawTransLine } of entries) {
-    ac.addPattern(native, target, rawTransLine);
+  for (const entry of entries) {
+    ac.addEntry(entry);
   }
   ac.build();
   return ac;
@@ -234,8 +244,8 @@ function processTextNode(textNode, ac, rand) {
   if (textNode.parentElement?.classList?.contains(LB_CLASS)) return;
 
   const charBefore = prevTextChar(textNode);
-  const charAfter = nextTextChar(textNode);
-  const matches = ac.search(text, charBefore, charAfter);
+  const charAfter  = nextTextChar(textNode);
+  const matches    = ac.search(text, charBefore, charAfter);
   if (!matches.length) return;
 
   const active = matches.filter(() => rand() < globalRate);
@@ -243,14 +253,14 @@ function processTextNode(textNode, ac, rand) {
 
   const frag = document.createDocumentFragment();
   let cursor = 0;
-  for (const { start, end, pattern, replacement, rawTransLine } of active) {
+  for (const { start, end, entry } of active) {
     if (start > cursor) frag.appendChild(document.createTextNode(text.slice(cursor, start)));
     const original = text.slice(start, end);
     const span = document.createElement('span');
     span.className = LB_CLASS;
-    span.textContent = matchCase(original, replacement);
-    span.dataset.native = original;
-    span.dataset.rawTransLine = rawTransLine;
+    span.textContent = matchCase(original, entry.target);
+    span.dataset.native      = original;
+    span.dataset.rawTransLine = entry.rawTransLine;
     frag.appendChild(span);
     blendedCount++;
     cursor = end;
@@ -284,11 +294,11 @@ document.addEventListener('click', e => {
 }, true);
 
 // ── MutationObserver ──────────────────────────────────────────────────────────
-let pendingNodes = [];
-let mutationTimer = null;
-let globalAC = null;
-let globalRate = 1.0;
-let globalRand = null;
+let pendingNodes   = [];
+let mutationTimer  = null;
+let globalAC       = null;
+let globalRate     = 1.0;
+let globalRand     = null;
 
 function scheduleMutation() {
   clearTimeout(mutationTimer);
@@ -329,18 +339,18 @@ const SentenceAnalyser = (() => {
   function run(text, vocabNativeSet) {
     try {
       const sentences = text.split(/(?<=[.?!])\s+/).filter(s => s.trim().length > 20);
-      const results = [];
+      const results   = [];
       for (const sentence of sentences) {
         const words = sentence.split(/\s+/)
           .map(w => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase())
           .filter(Boolean);
         if (words.length < 3) continue;
-        const known = words.filter(w => vocabNativeSet.has(w));
+        const known   = words.filter(w => vocabNativeSet.has(w));
         const missing = words.filter(w => !vocabNativeSet.has(w));
         results.push({ pct: known.length / words.length, missing });
       }
       const highCoverage = results.filter(r => r.pct >= 0.7);
-      const missingFreq = {};
+      const missingFreq  = {};
       for (const r of highCoverage)
         for (const w of r.missing)
           missingFreq[w] = (missingFreq[w] || 0) + 1;
@@ -371,7 +381,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 });
 
-// ── Page language detection (NEW in v0.5.0) ───────────────────────────────────
+// ── Page language detection (v0.5.0) ─────────────────────────────────────────
 function detectPageLanguage() {
   const htmlLang = document.documentElement.getAttribute('lang');
   if (htmlLang) return htmlLang.split('-')[0].toLowerCase();
@@ -383,7 +393,6 @@ function detectPageLanguage() {
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
-// Reads: enabled, vocabText, rate, disabledHosts, nativeLanguage (NEW)
 chrome.storage.local.get(['enabled', 'vocabText', 'rate', 'disabledHosts', 'nativeLanguage']).then(async data => {
   const disabledHosts = data.disabledHosts || [];
   if (disabledHosts.includes(location.hostname)) return;
@@ -391,9 +400,8 @@ chrome.storage.local.get(['enabled', 'vocabText', 'rate', 'disabledHosts', 'nati
   if (!data.vocabText) return;
 
   const nativeLang = data.nativeLanguage || null;
-  const pageLang = detectPageLanguage();
+  const pageLang   = detectPageLanguage();
 
-  // Report mismatch for popup notice — but always continue blending
   if (nativeLang && pageLang && pageLang !== nativeLang) {
     chrome.runtime.sendMessage({ type: 'LANG_MISMATCH', pageLang, nativeLang });
   }
@@ -404,8 +412,13 @@ chrome.storage.local.get(['enabled', 'vocabText', 'rate', 'disabledHosts', 'nati
   const entries = parseVocab(data.vocabText);
   if (!entries.length) return;
 
-  globalAC             = buildAutomaton(entries);
-  globalVocabNativeSet = new Set(entries.map(e => e.native.toLowerCase()));
+  globalAC = buildAutomaton(entries);
+
+  // Sentence analyser set: all translations + all forms for every entry
+  globalVocabNativeSet = new Set(
+    entries.flatMap(e => [...e.translations, ...e.forms].map(s => s.toLowerCase()))
+  );
+
   rawPageText = document.body.innerText || '';
   const urlSeed = [...location.href].reduce((h, c) => Math.imul(31, h) + c.charCodeAt(0) | 0, 0);
   globalRand = makeSeededRandom(urlSeed);

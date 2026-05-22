@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LingoBlend",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Substitutes native-language words with target-language words as you browse.",
   "permissions": [
     "storage",
@@ -19,7 +19,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["aho-corasick.js", "content.js"],
+      "js": ["function-wordlists.js", "aho-corasick.js", "content.js"],
       "run_at": "document_idle"
     }
   ],

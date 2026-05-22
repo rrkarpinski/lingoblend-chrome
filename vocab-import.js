@@ -1,0 +1,170 @@
+/**
+ * vocab-import.js — LingoBlend shared ES module
+ * Owns all pure logic for parsing, diffing, merging, and serialising vocab.
+ * No DOM, no chrome.storage, no side effects.
+ */
+
+// ── Delimiter helpers ─────────────────────────────────────────────────────────
+
+export function delimForFile(fileName) {
+  const ext = (fileName || '').split('.').pop().toLowerCase();
+  if (ext === 'tsv') return '\t';
+  if (ext === 'csv') return ';';
+  return null;
+}
+
+export function detectDelimiter(line) {
+  if (line.includes('\t')) return '\t';
+  if (line.includes(';'))  return ';';
+  return null;
+}
+
+// ── Parser ────────────────────────────────────────────────────────────────────
+
+const KNOWN_HEADER_TOKENS = new Set([
+  'target','word','native','translation','translations',
+  'forms','source','notes','comment','tags'
+]);
+
+const KNOWN_COLS = ['target', 'translations', 'forms', 'source'];
+
+export function parseVocabFull(text, delim) {
+  const lines = text.split(/\r?\n/);
+  let colNames = null;
+  const rows = [];
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const cells = line.split(delim);
+
+    if (colNames === null) {
+      const firstToken = cells[0].trim().toLowerCase();
+      if (KNOWN_HEADER_TOKENS.has(firstToken)) {
+        colNames = cells.map(c => c.trim().toLowerCase());
+        continue;
+      } else {
+        const n = Math.max(cells.length, 2);
+        colNames = Array.from({ length: n }, (_, i) => KNOWN_COLS[i] || `col${i}`);
+      }
+    }
+
+    const obj = {};
+    cells.forEach((c, i) => { obj[colNames[i] || `col${i}`] = c.trim(); });
+    if (!obj.target)       obj.target       = obj[colNames[0]] || '';
+    if (!obj.translations) obj.translations = colNames[1] ? (obj[colNames[1]] || '') : '';
+    if (!obj.target || !obj.translations) continue;
+    rows.push(obj);
+  }
+
+  return { rows, colNames: colNames || KNOWN_COLS.slice(0, 2) };
+}
+
+// ── Function-word filter ──────────────────────────────────────────────────────
+// fwStats: { droppedCol1, droppedCol2Empty, removedTranslations, rowsWithRemovedTranslations }
+
+export function applyFunctionWordFilter(rows, targetLang, nativeLang) {
+  const fw = window.LB_FW || {};
+  const targetSet = fw[targetLang] || null;
+  const nativeSet = fw[nativeLang] || null;
+
+  let droppedCol1 = 0;
+  let droppedCol2Empty = 0;
+  let removedTranslations = 0;
+  let rowsWithRemovedTranslations = 0;
+  const filtered = [];
+
+  for (const row of rows) {
+    // Step 1: drop row if col1 target is a function word
+    if (targetSet && targetSet.has(row.target.toLowerCase())) {
+      droppedCol1++;
+      continue;
+    }
+
+    // Step 2: filter individual translation tokens in col2
+    let translations = (row.translations || '')
+      .split(',').map(t => t.trim()).filter(Boolean);
+    let removedThisRow = 0;
+    if (nativeSet && translations.length) {
+      const before = translations.length;
+      translations = translations.filter(t => !nativeSet.has(t.toLowerCase()));
+      removedThisRow = before - translations.length;
+      removedTranslations += removedThisRow;
+    }
+
+    // Step 3: drop row if all translations were filtered out
+    if (!translations.length) {
+      droppedCol2Empty++;
+      continue;
+    }
+    if (removedThisRow > 0) rowsWithRemovedTranslations++;
+
+    // Step 4: filter individual form tokens in col3
+    let forms = (row.forms || '').split(',').map(f => f.trim()).filter(Boolean);
+    if (targetSet && forms.length) {
+      forms = forms.filter(f => !targetSet.has(f.toLowerCase()));
+    }
+
+    filtered.push({
+      ...row,
+      translations: translations.join(','),
+      forms: forms.join(','),
+    });
+  }
+
+  return {
+    filtered,
+    fwStats: { droppedCol1, droppedCol2Empty, removedTranslations, rowsWithRemovedTranslations }
+  };
+}
+
+// ── Diff ──────────────────────────────────────────────────────────────────────
+
+export function buildDiff(incoming, existing) {
+  const existingMap = new Map(existing.map(r => [r.target, r]));
+  const incomingSet = new Set(incoming.map(r => r.target));
+  const newWords = [], updated = [], unchanged = [], removed = [];
+
+  for (const row of incoming) {
+    if (!existingMap.has(row.target)) {
+      newWords.push(row);
+    } else {
+      const old = existingMap.get(row.target);
+      (JSON.stringify(old) !== JSON.stringify(row) ? updated : unchanged).push(row);
+    }
+  }
+  for (const row of existing) {
+    if (!incomingSet.has(row.target)) removed.push(row);
+  }
+
+  return { newWords, updated, unchanged, removed };
+}
+
+// ── Merge ─────────────────────────────────────────────────────────────────────
+
+export function applyMerge(mode, incoming, existing) {
+  if (mode === 'replace') return incoming;
+  const existingMap = new Map(existing.map(r => [r.target, r]));
+  if (mode === 'addnew')
+    return [...existing, ...incoming.filter(r => !existingMap.has(r.target))];
+  // addupdate
+  const merged = [...existing];
+  const mergedIdx = new Map(merged.map((r, i) => [r.target, i]));
+  for (const row of incoming) {
+    if (mergedIdx.has(row.target)) merged[mergedIdx.get(row.target)] = row;
+    else merged.push(row);
+  }
+  return merged;
+}
+
+// ── Serialiser ────────────────────────────────────────────────────────────────
+
+export function vocabRowsToText(rows, colNames, delim = ';') {
+  const header = colNames.join(delim);
+  const body = rows.map(r =>
+    colNames.map(c =>
+      (r[c] || '').replace(new RegExp(delim === '\t' ? '\t' : delim, 'g'), ' ')
+    ).join(delim)
+  );
+  return [header, ...body].join('\n');
+}

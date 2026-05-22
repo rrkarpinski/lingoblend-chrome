@@ -1,3 +1,9 @@
+import {
+  delimForFile, detectDelimiter,
+  parseVocabFull, applyFunctionWordFilter,
+  buildDiff, applyMerge, vocabRowsToText
+} from '../vocab-import.js';
+
 // ── Tab switching ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -8,7 +14,6 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
-// Handle #profiles hash from popup "Manage profiles" link
 if (location.hash === '#profiles') {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
@@ -28,8 +33,7 @@ function generateUUID() {
   });
 }
 
-
-// ── State (now reads from active profile) ─────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────────
 let globalRows = [];
 let globalColNames = ['target', 'translations'];
 let globalVocabName = 'lingoblend-vocab';
@@ -42,7 +46,6 @@ chrome.storage.local.get(['vocabText', 'vocabName', 'vocabColNames', 'disabledHo
     globalProfiles = data.profiles || {};
     globalActiveId = data.activeProfileId || '';
 
-    // Update header profile name
     const activeProfile = globalProfiles[globalActiveId];
     if (activeProfile) {
       document.getElementById('header-profile-name').textContent = activeProfile.name;
@@ -117,22 +120,16 @@ function renderProfiles() {
     container.appendChild(card);
   }
 
-  // Set active
   container.querySelectorAll('.btn-set-active').forEach(btn => {
     btn.addEventListener('click', () => setActiveProfile(btn.dataset.id));
   });
-
-  // Delete
   container.querySelectorAll('.btn-delete-profile').forEach(btn => {
     btn.addEventListener('click', () => deleteProfile(btn.dataset.id));
   });
-
-  // Export
   container.querySelectorAll('.btn-export-profile').forEach(btn => {
     btn.addEventListener('click', () => exportProfile(btn.dataset.id));
   });
 
-  // Inline rename
   container.querySelectorAll('.btn-edit-name').forEach(btn => {
     const id = btn.dataset.id;
     const span  = document.getElementById(`pname-${id}`);
@@ -278,7 +275,7 @@ document.getElementById('profile-file-input').addEventListener('change', async e
   }
 });
 
-// ══ ANALYTICS TAB (unchanged except reads from active profile data) ════════════
+// ══ ANALYTICS TAB ════════════════════════════════════════════════════════════
 function renderAnalytics(history) {
   const totalSessions = history.length;
   const sites = new Set(history.map(h => h.hostname)).size;
@@ -344,7 +341,7 @@ function renderAnalytics(history) {
   }).join('');
 }
 
-// ══ VOCABULARY TAB (unchanged from v0.4.3) ════════════════════════════════════
+// ══ VOCABULARY TAB ════════════════════════════════════════════════════════════
 function renderVocab(rows, colNames) {
   const badge = document.getElementById('vocab-count-badge');
   badge.textContent = rows.length + ' words';
@@ -424,17 +421,12 @@ async function saveVocabRows() {
     profiles[activeId].vocabText = text;
     profiles[activeId].vocabCount = globalRows.length;
   }
-  await chrome.storage.local.set({
-    vocabText: text,
-    vocabCount: globalRows.length,
-    profiles
-  });
+  await chrome.storage.local.set({ vocabText: text, vocabCount: globalRows.length, profiles });
 }
 
 // ── Vocab export ──────────────────────────────────────────────────────────────
 document.getElementById('btn-export-dash').addEventListener('click', () => {
-  const delim = ';';
-  const text = vocabRowsToText(globalRows, globalColNames, delim);
+  const text = vocabRowsToText(globalRows, globalColNames, ';');
   const now = new Date();
   const stamp = now.toISOString().slice(0, 10) + '_' +
     String(now.getHours()).padStart(2, '0') +
@@ -448,154 +440,78 @@ document.getElementById('btn-export-dash').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
-
-// ── Vocab import ───────────────────────────────────────────────────────────────
-const modalDiff = document.getElementById('modal-diff');
+// ── Vocab import ──────────────────────────────────────────────────────────────
+const modalDiff    = document.getElementById('modal-diff');
 const modalDiffBody = document.getElementById('modal-diff-body');
 let _diffResolve = null;
 
-function showDiffModal(diff) {
+function showDiffModal(diff, fwStats) {
+  let fwLine = '';
+  if (fwStats) {
+    const totalDropped = (fwStats.droppedCol1 || 0) + (fwStats.droppedCol2Empty || 0);
+    const removedT = fwStats.removedTranslations || 0;
+    const rowsT = fwStats.rowsWithRemovedTranslations || 0;
+    if (totalDropped > 0 || removedT > 0) {
+      const parts = [];
+      if (fwStats.droppedCol1 > 0)
+        parts.push(`${fwStats.droppedCol1} row${fwStats.droppedCol1 !== 1 ? 's' : ''} dropped (col1 function word)`);
+      if (fwStats.droppedCol2Empty > 0)
+        parts.push(`${fwStats.droppedCol2Empty} row${fwStats.droppedCol2Empty !== 1 ? 's' : ''} dropped (all translations filtered)`);
+      if (removedT > 0)
+        parts.push(`${removedT} translation${removedT !== 1 ? 's' : ''} removed from ${rowsT} row${rowsT !== 1 ? 's' : ''}`);
+      fwLine = `<br><span style="color:#7a7974;font-size:0.92em">⊘ Function words: ${parts.join(' · ')}</span>`;
+    }
+  }
   modalDiffBody.innerHTML =
     `<strong style="color:#437a22">+${diff.newWords.length} added</strong> &nbsp;` +
     `<strong style="color:#da7101">~${diff.updated.length} modified</strong> &nbsp;` +
     `<strong style="color:#7a7974">=${diff.unchanged.length} unchanged</strong> &nbsp;` +
-    `<strong style="color:#a12c7b">-${diff.removed.length} removed</strong>`;
+    `<strong style="color:#a12c7b">-${diff.removed.length} removed</strong>` +
+    fwLine;
   modalDiff.style.display = 'flex';
   return new Promise(res => { _diffResolve = res; });
 }
 
 document.getElementById('diff-add-new').addEventListener('click', () => {
-  modalDiff.style.display = 'none';
-  _diffResolve?.('addnew');
-  _diffResolve = null;
+  modalDiff.style.display = 'none'; _diffResolve?.('addnew'); _diffResolve = null;
 });
 document.getElementById('diff-add-update').addEventListener('click', () => {
-  modalDiff.style.display = 'none';
-  _diffResolve?.('addupdate');
-  _diffResolve = null;
+  modalDiff.style.display = 'none'; _diffResolve?.('addupdate'); _diffResolve = null;
 });
 document.getElementById('diff-replace').addEventListener('click', () => {
-  modalDiff.style.display = 'none';
-  _diffResolve?.('replace');
-  _diffResolve = null;
+  modalDiff.style.display = 'none'; _diffResolve?.('replace'); _diffResolve = null;
 });
 document.getElementById('diff-cancel').addEventListener('click', () => {
-  modalDiff.style.display = 'none';
-  _diffResolve?.(null);
-  _diffResolve = null;
+  modalDiff.style.display = 'none'; _diffResolve?.(null); _diffResolve = null;
 });
 
-const KNOWN_HEADER_TOKENS = new Set([
-  'target','word','native','translation','translations',
-  'forms','source','notes','comment','tags'
-]);
-
-function delimForFile(fileName) {
-  const ext = (fileName || '').split('.').pop().toLowerCase();
-  if (ext === 'tsv') return '\t';
-  if (ext === 'csv') return ';';
-  return null;
-}
-
-function detectDelimiter(line) {
-  if (line.includes('\t')) return '\t';
-  if (line.includes(';'))  return ';';
-  return null;
-}
-
-function parseVocabFull(text, delim) {
-  const KNOWN_COLS = ['target', 'translations', 'forms', 'source'];
-  const lines = text.split(/\r?\n/);
-  let colNames = null;
-  const rows = [];
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-    const cells = line.split(delim);
-    if (colNames === null) {
-      const firstToken = cells[0].trim().toLowerCase();
-      if (KNOWN_HEADER_TOKENS.has(firstToken)) {
-        colNames = cells.map(c => c.trim().toLowerCase());
-        continue;
-      } else {
-        const n = Math.max(cells.length, 2);
-        colNames = Array.from({ length: n }, (_, i) => KNOWN_COLS[i] || `col${i}`);
-      }
-    }
-    const obj = {};
-    cells.forEach((c, i) => { obj[colNames[i] || `col${i}`] = c.trim(); });
-    if (!obj.target) obj.target = obj[colNames[0]] || '';
-    if (!obj.translations && colNames[1]) obj.translations = obj[colNames[1]] || '';
-    if (!obj.target || !obj.translations) continue;
-    rows.push(obj);
-  }
-  return { rows, colNames: colNames || KNOWN_COLS.slice(0, 2) };
-}
-
-function vocabRowsToText(rows, colNames, delim = ';') {
-  const header = colNames.join(delim);
-  const body = rows.map(r =>
-    colNames.map(c => (r[c] || '').replace(new RegExp(delim === '\t' ? '\t' : delim, 'g'), ' ')).join(delim)
-  );
-  return [header, ...body].join('\n');
-}
-
-function buildDiff(incoming, existing) {
-  const existingMap = new Map(existing.map(r => [r.target, r]));
-  const incomingSet = new Set(incoming.map(r => r.target));
-  const newWords = [], updated = [], unchanged = [], removed = [];
-  for (const row of incoming) {
-    if (!existingMap.has(row.target)) newWords.push(row);
-    else {
-      const old = existingMap.get(row.target);
-      (JSON.stringify(old) !== JSON.stringify(row) ? updated : unchanged).push(row);
-    }
-  }
-  for (const row of existing) {
-    if (!incomingSet.has(row.target)) removed.push(row);
-  }
-  return { newWords, updated, unchanged, removed };
-}
-
-function applyMerge(mode, incoming, existing) {
-  if (mode === 'replace') return incoming;
-  const existingMap = new Map(existing.map(r => [r.target, r]));
-  if (mode === 'addnew') return [...existing, ...incoming.filter(r => !existingMap.has(r.target))];
-  const merged = [...existing];
-  const mergedIdx = new Map(merged.map((r, i) => [r.target, i]));
-  for (const row of incoming) {
-    if (mergedIdx.has(row.target)) merged[mergedIdx.get(row.target)] = row;
-    else merged.push(row);
-  }
-  return merged;
-}
-
-async function handleImport(text, fileName, onComplete) {
+async function handleImport(text, fileName) {
   const lines = text.split(/\r?\n/);
   const firstLine = lines.find(l => l.trim()) || '';
 
   let delim = delimForFile(fileName);
-  if (!delim || firstLine.split(delim).length < 2) {
-    delim = detectDelimiter(firstLine);
-  }
-  if (!delim) {
-    alert('Could not detect delimiter. File must be tab- or semicolon-separated.');
-    return;
-  }
+  if (!delim || firstLine.split(delim).length < 2) delim = detectDelimiter(firstLine);
+  if (!delim) { alert('Could not detect delimiter. File must be tab- or semicolon-separated.'); return; }
 
-  const { rows: incoming, colNames } = parseVocabFull(text, delim);
-  if (!incoming.length) {
-    alert('No valid rows found in file.');
-    return;
-  }
+  const { rows: rawIncoming, colNames } = parseVocabFull(text, delim);
+  if (!rawIncoming.length) { alert('No valid rows found in file.'); return; }
 
-  const stored = await chrome.storage.local.get(['vocabText', 'vocabName', 'vocabColNames', 'profiles', 'activeProfileId']);
+  const stored = await chrome.storage.local.get(
+    ['vocabText', 'vocabColNames', 'profiles', 'activeProfileId']
+  );
+  const activeProfile = (stored.profiles || {})[stored.activeProfileId] || {};
+  const targetLang = activeProfile.targetLanguage || null;
+  const nativeLang = activeProfile.nativeLanguage || null;
+
+  const { filtered: incoming, fwStats } = applyFunctionWordFilter(rawIncoming, targetLang, nativeLang);
+  if (!incoming.length) { alert('No content words remained after function-word filtering.'); return; }
+
   const existingText = stored.vocabText || '';
   const existingDelim = existingText.includes('\t') ? '\t' : ';';
   const { rows: existing } = existingText ? parseVocabFull(existingText, existingDelim) : { rows: [] };
 
   const diff = buildDiff(incoming, existing);
-  const mode = await showDiffModal(diff);
+  const mode = await showDiffModal(diff, fwStats);
   if (!mode) return;
 
   const merged = applyMerge(mode, incoming, existing);
@@ -612,12 +528,14 @@ async function handleImport(text, fileName, onComplete) {
     profiles[activeId].vocabDelimiter = delim;
   }
 
-  const storageUpdates = {
+  globalRows = merged;
+  globalColNames = colNames;
+  globalVocabName = name;
+  await chrome.storage.local.set({
     vocabText: newText, vocabName: name, vocabCount: count,
     vocabColNames: colNames, vocabDelimiter: delim, profiles
-  };
-
-  await onComplete(storageUpdates, { merged, colNames, name, delim });
+  });
+  renderVocab(globalRows, globalColNames);
 }
 
 document.getElementById('btn-import-dash').addEventListener('click', () => {
@@ -628,15 +546,8 @@ document.getElementById('dash-file-input').addEventListener('change', async e =>
   const file = e.target.files[0];
   if (!file) return;
   e.target.value = '';
-  await handleImport(await file.text(), file.name, async (storageUpdates, { merged, colNames }) => {
-    globalRows = merged;
-    globalColNames = colNames;
-    globalVocabName = storageUpdates.vocabName;
-    await chrome.storage.local.set(storageUpdates);
-    renderVocab(globalRows, globalColNames);
-  });
+  await handleImport(await file.text(), file.name);
 });
-
 
 // ══ MUTED SITES TAB ═══════════════════════════════════════════════════════════
 function renderBlacklist(hosts) {

@@ -1,4 +1,10 @@
-// ── v0.4.3 DOM refs (unchanged) ───────────────────────────────────────────────
+import {
+  delimForFile, detectDelimiter,
+  parseVocabFull, applyFunctionWordFilter,
+  buildDiff, applyMerge, vocabRowsToText
+} from '../vocab-import.js';
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
 const chkEnabled          = document.getElementById('chk-enabled');
 const fileInput           = document.getElementById('file-input');
 const btnClear            = document.getElementById('btn-clear');
@@ -13,19 +19,16 @@ const vocabName           = document.getElementById('vocab-name');
 const vocabCount          = document.getElementById('vocab-count');
 const siteLine            = document.getElementById('site-line');
 const btnDash             = document.getElementById('btn-dashboard');
-
-// ── v0.5.0 DOM refs ───────────────────────────────────────────────────────────
-const profileBadge       = document.getElementById('profile-badge');
-const profileBadgeName   = document.getElementById('profile-badge-name');
-const profileDropdown    = document.getElementById('profile-dropdown');
-const profileDropdownList= document.getElementById('profile-dropdown-list');
-const btnManageProfiles  = document.getElementById('btn-manage-profiles');
+const profileBadge        = document.getElementById('profile-badge');
+const profileBadgeName    = document.getElementById('profile-badge-name');
+const profileDropdown     = document.getElementById('profile-dropdown');
+const profileDropdownList = document.getElementById('profile-dropdown-list');
+const btnManageProfiles   = document.getElementById('btn-manage-profiles');
 
 let currentHostname = '';
 let currentTab = null;
 
-// ── Helpers (v0.5.0) ──────────────────────────────────────────────────────────
-
+// ── Helpers ───────────────────────────────────────────────────────────────────
 async function applyAndReload(storageUpdates = {}) {
   if (Object.keys(storageUpdates).length > 0) {
     await chrome.storage.local.set(storageUpdates);
@@ -41,7 +44,6 @@ async function applyAndReload(storageUpdates = {}) {
   window.close();
 }
 
-// Sync active profile's flat keys to storage, update lastUsedAt
 function syncFlatFromProfile(profile) {
   return {
     vocabText:        profile.vocabText        || '',
@@ -61,21 +63,16 @@ async function switchProfile(id) {
   if (!profile) return;
   profile.lastUsedAt = Date.now();
   profiles[id] = profile;
-
-  const flatKeys = await syncFlatFromProfile(profile);
-
-  await applyAndReload({activeProfileId: id, profiles, ...flatKeys});
+  const flatKeys = syncFlatFromProfile(profile);
+  await applyAndReload({ activeProfileId: id, profiles, ...flatKeys });
 }
 
 function renderProfileBadge(profiles, activeId) {
   const active = profiles[activeId];
-  if (active) {
-    profileBadgeName.textContent = active.name;
-  }
+  if (active) profileBadgeName.textContent = active.name;
 }
 
 function renderProfileDropdown(profiles, activeId) {
-  // Render in insertion order (static order per spec)
   profileDropdownList.innerHTML = '';
   for (const id of Object.keys(profiles)) {
     const p = profiles[id];
@@ -87,15 +84,11 @@ function renderProfileDropdown(profiles, activeId) {
   }
 }
 
-// Toggle dropdown visibility
 profileBadge.addEventListener('click', e => {
   e.stopPropagation();
-  const hidden = profileDropdown.hidden;
-  profileDropdown.hidden = !hidden;
+  profileDropdown.hidden = !profileDropdown.hidden;
 });
-
 document.addEventListener('click', () => { profileDropdown.hidden = true; });
-
 profileDropdown.addEventListener('click', e => e.stopPropagation());
 
 btnManageProfiles.addEventListener('click', () => {
@@ -103,7 +96,7 @@ btnManageProfiles.addEventListener('click', () => {
   window.close();
 });
 
-// ── Lang mismatch notice ──────────────────────────────────────────────────────
+// ── Lang mismatch ─────────────────────────────────────────────────────────────
 function showLangMismatchNotice(pageLang, nativeLang) {
   langMismatchNotice.textContent = `Page may not be in ${nativeLang.toUpperCase()}`;
   langMismatchNotice.hidden = false;
@@ -119,9 +112,8 @@ async function init() {
      'profiles', 'activeProfileId', 'nativeLanguage']
   );
 
-  // Render profile badge + dropdown
-  const profiles   = data.profiles || {};
-  const activeId   = data.activeProfileId || '';
+  const profiles = data.profiles || {};
+  const activeId = data.activeProfileId || '';
   renderProfileBadge(profiles, activeId);
   renderProfileDropdown(profiles, activeId);
 
@@ -135,8 +127,7 @@ async function init() {
   if (tab?.url) {
     try {
       currentHostname = new URL(tab.url).hostname;
-      const disabled = (data.disabledHosts || []).includes(currentHostname);
-      renderSiteLine(disabled);
+      renderSiteLine((data.disabledHosts || []).includes(currentHostname));
     } catch (_) {}
   }
 
@@ -149,7 +140,7 @@ async function init() {
   }
 }
 
-// ── Stats helpers ──────────────────────────────────────────────────────────────
+// ── Stats ─────────────────────────────────────────────────────────────────────
 function queryAndRenderStats(tabId) {
   chrome.tabs.sendMessage(tabId, { type: 'GET_STATS' }, resp => {
     if (chrome.runtime.lastError || !resp) {
@@ -170,7 +161,6 @@ function queryAndRenderStats(tabId) {
   });
 }
 
-// ── Sentence stats ─────────────────────────────────────────────────────────────
 function renderSentenceStats(data) {
   if (!data || data.sentenceCount === 0) return;
   sentStats.hidden = false;
@@ -185,20 +175,14 @@ function renderSentenceStats(data) {
     </div>`;
 }
 
-// ── State display helpers (unchanged) ─────────────────────────────────────────
-function showEmptyState() {
-  stateEmpty.hidden = false;
-  stateLoaded.hidden = true;
-}
-
+function showEmptyState() { stateEmpty.hidden = false; stateLoaded.hidden = true; }
 function showLoadedState(name, count) {
-  stateEmpty.hidden = true;
-  stateLoaded.hidden = false;
+  stateEmpty.hidden = true; stateLoaded.hidden = false;
   vocabName.textContent = name;
   vocabCount.textContent = count + ' words';
 }
 
-// ── Site line ──────────────────────────────────────────────────────────────────
+// ── Site line ─────────────────────────────────────────────────────────────────
 function renderSiteLine(disabled) {
   if (!currentHostname) { siteLine.textContent = ''; return; }
   if (disabled) {
@@ -215,33 +199,20 @@ async function toggleSite() {
   const isDisabled = hosts.includes(currentHostname);
   if (isDisabled) hosts = hosts.filter(h => h !== currentHostname);
   else hosts.push(currentHostname);
-
   const profiles = data.profiles || {};
   const activeId = data.activeProfileId;
-  if (activeId && profiles[activeId]) {
-    profiles[activeId].disabledHosts = hosts;
-  }
-
-  await applyAndReload({
-    disabledHosts: hosts,
-    ...(activeId && profiles[activeId] ? { profiles } : {})
-  });
+  if (activeId && profiles[activeId]) profiles[activeId].disabledHosts = hosts;
+  await applyAndReload({ disabledHosts: hosts, ...(activeId && profiles[activeId] ? { profiles } : {}) });
 }
 
-// ── Enabled toggle ────────────────────────────────────────────────────────────
+// ── Controls ──────────────────────────────────────────────────────────────────
 chkEnabled.addEventListener('change', async () => {
   await applyAndReload({ enabled: chkEnabled.checked });
 });
 
-// ── Rate slider ───────────────────────────────────────────────────────────────
-rateSlider.addEventListener('input', () => {
-  rateVal.textContent = rateSlider.value + '%';
-});
-rateSlider.addEventListener('change', () => {
-  applyAndReload({ rate: parseInt(rateSlider.value) });
-});
+rateSlider.addEventListener('input', () => { rateVal.textContent = rateSlider.value + '%'; });
+rateSlider.addEventListener('change', () => { applyAndReload({ rate: parseInt(rateSlider.value) }); });
 
-// ── Clear vocab (unchanged, but also updates active profile) ──────────────────
 btnClear.addEventListener('click', async () => {
   const data = await chrome.storage.local.get(['profiles', 'activeProfileId']);
   const profiles = data.profiles || {};
@@ -251,159 +222,81 @@ btnClear.addEventListener('click', async () => {
     profiles[activeId].vocabName = '';
     profiles[activeId].vocabCount = 0;
   }
-  await applyAndReload({
-    vocabText: '', vocabName: '', vocabCount: 0,
-    profiles
-  });
+  await applyAndReload({ vocabText: '', vocabName: '', vocabCount: 0, profiles });
 });
 
-// ── File import ───────────────────────────────────────────────────────────────
-const modalDiff = document.getElementById('modal-diff');
+// ── Vocab import ──────────────────────────────────────────────────────────────
+const modalDiff     = document.getElementById('modal-diff');
 const modalDiffBody = document.getElementById('modal-diff-body');
 let _diffResolve = null;
 
-function showDiffModal(diff) {
+function showDiffModal(diff, fwStats) {
+  let fwLine = '';
+  if (fwStats) {
+    const totalDropped = (fwStats.droppedCol1 || 0) + (fwStats.droppedCol2Empty || 0);
+    const removedT = fwStats.removedTranslations || 0;
+    const rowsT = fwStats.rowsWithRemovedTranslations || 0;
+    if (totalDropped > 0 || removedT > 0) {
+      const parts = [];
+      if (fwStats.droppedCol1 > 0)
+        parts.push(`${fwStats.droppedCol1} row${fwStats.droppedCol1 !== 1 ? 's' : ''} dropped (col1 function word)`);
+      if (fwStats.droppedCol2Empty > 0)
+        parts.push(`${fwStats.droppedCol2Empty} row${fwStats.droppedCol2Empty !== 1 ? 's' : ''} dropped (all translations filtered)`);
+      if (removedT > 0)
+        parts.push(`${removedT} translation${removedT !== 1 ? 's' : ''} removed from ${rowsT} row${rowsT !== 1 ? 's' : ''}`);
+      fwLine = `<br><span style="color:#7a7974;font-size:0.92em">⊘ Function words: ${parts.join(' · ')}</span>`;
+    }
+  }
   modalDiffBody.innerHTML =
     `<strong style="color:#437a22">+${diff.newWords.length} added</strong> &nbsp;` +
     `<strong style="color:#da7101">~${diff.updated.length} modified</strong> &nbsp;` +
     `<strong style="color:#7a7974">=${diff.unchanged.length} unchanged</strong> &nbsp;` +
-    `<strong style="color:#a12c7b">-${diff.removed.length} removed</strong>`;
+    `<strong style="color:#a12c7b">-${diff.removed.length} removed</strong>` +
+    fwLine;
   modalDiff.style.display = 'flex';
   return new Promise(res => { _diffResolve = res; });
 }
 
 document.getElementById('diff-add-new').addEventListener('click', () => {
-  modalDiff.style.display = 'none';
-  _diffResolve?.('addnew');
-  _diffResolve = null;
+  modalDiff.style.display = 'none'; _diffResolve?.('addnew'); _diffResolve = null;
 });
 document.getElementById('diff-add-update').addEventListener('click', () => {
-  modalDiff.style.display = 'none';
-  _diffResolve?.('addupdate');
-  _diffResolve = null;
+  modalDiff.style.display = 'none'; _diffResolve?.('addupdate'); _diffResolve = null;
 });
 document.getElementById('diff-replace').addEventListener('click', () => {
-  modalDiff.style.display = 'none';
-  _diffResolve?.('replace');
-  _diffResolve = null;
+  modalDiff.style.display = 'none'; _diffResolve?.('replace'); _diffResolve = null;
 });
 document.getElementById('diff-cancel').addEventListener('click', () => {
-  modalDiff.style.display = 'none';
-  _diffResolve?.(null);
-  _diffResolve = null;
+  modalDiff.style.display = 'none'; _diffResolve?.(null); _diffResolve = null;
 });
 
-const KNOWN_HEADER_TOKENS = new Set([
-  'target','word','native','translation','translations',
-  'forms','source','notes','comment','tags'
-]);
-
-function delimForFile(fileName) {
-  const ext = (fileName || '').split('.').pop().toLowerCase();
-  if (ext === 'tsv') return '\t';
-  if (ext === 'csv') return ';';
-  return null;
-}
-
-function detectDelimiter(line) {
-  if (line.includes('\t')) return '\t';
-  if (line.includes(';'))  return ';';
-  return null;
-}
-
-function parseVocabFull(text, delim) {
-  const KNOWN_COLS = ['target', 'translations', 'forms', 'source'];
-  const lines = text.split(/\r?\n/);
-  let colNames = null;
-  const rows = [];
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-    const cells = line.split(delim);
-    if (colNames === null) {
-      const firstToken = cells[0].trim().toLowerCase();
-      if (KNOWN_HEADER_TOKENS.has(firstToken)) {
-        colNames = cells.map(c => c.trim().toLowerCase());
-        continue;
-      } else {
-        const n = Math.max(cells.length, 2);
-        colNames = Array.from({ length: n }, (_, i) => KNOWN_COLS[i] || `col${i}`);
-      }
-    }
-    const obj = {};
-    cells.forEach((c, i) => { obj[colNames[i] || `col${i}`] = c.trim(); });
-    if (!obj.target) obj.target = obj[colNames[0]] || '';
-    if (!obj.translations && colNames[1]) obj.translations = obj[colNames[1]] || '';
-    if (!obj.target || !obj.translations) continue;
-    rows.push(obj);
-  }
-  return { rows, colNames: colNames || KNOWN_COLS.slice(0, 2) };
-}
-
-function vocabRowsToText(rows, colNames, delim = ';') {
-  const header = colNames.join(delim);
-  const body = rows.map(r =>
-    colNames.map(c => (r[c] || '').replace(new RegExp(delim === '\t' ? '\t' : delim, 'g'), ' ')).join(delim)
-  );
-  return [header, ...body].join('\n');
-}
-
-function buildDiff(incoming, existing) {
-  const existingMap = new Map(existing.map(r => [r.target, r]));
-  const incomingSet = new Set(incoming.map(r => r.target));
-  const newWords = [], updated = [], unchanged = [], removed = [];
-  for (const row of incoming) {
-    if (!existingMap.has(row.target)) newWords.push(row);
-    else {
-      const old = existingMap.get(row.target);
-      (JSON.stringify(old) !== JSON.stringify(row) ? updated : unchanged).push(row);
-    }
-  }
-  for (const row of existing) {
-    if (!incomingSet.has(row.target)) removed.push(row);
-  }
-  return { newWords, updated, unchanged, removed };
-}
-
-function applyMerge(mode, incoming, existing) {
-  if (mode === 'replace') return incoming;
-  const existingMap = new Map(existing.map(r => [r.target, r]));
-  if (mode === 'addnew') return [...existing, ...incoming.filter(r => !existingMap.has(r.target))];
-  const merged = [...existing];
-  const mergedIdx = new Map(merged.map((r, i) => [r.target, i]));
-  for (const row of incoming) {
-    if (mergedIdx.has(row.target)) merged[mergedIdx.get(row.target)] = row;
-    else merged.push(row);
-  }
-  return merged;
-}
-
-async function handleImport(text, fileName, onComplete) {
+async function handleImport(text, fileName) {
   const lines = text.split(/\r?\n/);
   const firstLine = lines.find(l => l.trim()) || '';
 
   let delim = delimForFile(fileName);
-  if (!delim || firstLine.split(delim).length < 2) {
-    delim = detectDelimiter(firstLine);
-  }
-  if (!delim) {
-    alert('Could not detect delimiter. File must be tab- or semicolon-separated.');
-    return;
-  }
+  if (!delim || firstLine.split(delim).length < 2) delim = detectDelimiter(firstLine);
+  if (!delim) { alert('Could not detect delimiter. File must be tab- or semicolon-separated.'); return; }
 
-  const { rows: incoming, colNames } = parseVocabFull(text, delim);
-  if (!incoming.length) {
-    alert('No valid rows found in file.');
-    return;
-  }
+  const { rows: rawIncoming, colNames } = parseVocabFull(text, delim);
+  if (!rawIncoming.length) { alert('No valid rows found in file.'); return; }
 
-  const stored = await chrome.storage.local.get(['vocabText', 'vocabName', 'vocabColNames', 'profiles', 'activeProfileId']);
+  const stored = await chrome.storage.local.get(
+    ['vocabText', 'vocabColNames', 'profiles', 'activeProfileId']
+  );
+  const activeProfile = (stored.profiles || {})[stored.activeProfileId] || {};
+  const targetLang = activeProfile.targetLanguage || null;
+  const nativeLang = activeProfile.nativeLanguage || null;
+
+  const { filtered: incoming, fwStats } = applyFunctionWordFilter(rawIncoming, targetLang, nativeLang);
+  if (!incoming.length) { alert('No content words remained after function-word filtering.'); return; }
+
   const existingText = stored.vocabText || '';
   const existingDelim = existingText.includes('\t') ? '\t' : ';';
   const { rows: existing } = existingText ? parseVocabFull(existingText, existingDelim) : { rows: [] };
 
   const diff = buildDiff(incoming, existing);
-  const mode = await showDiffModal(diff);
+  const mode = await showDiffModal(diff, fwStats);
   if (!mode) return;
 
   const merged = applyMerge(mode, incoming, existing);
@@ -420,29 +313,25 @@ async function handleImport(text, fileName, onComplete) {
     profiles[activeId].vocabDelimiter = delim;
   }
 
-  const storageUpdates = {
+  await applyAndReload({
     vocabText: newText, vocabName: name, vocabCount: count,
     vocabColNames: colNames, vocabDelimiter: delim, profiles
-  };
-
-  await onComplete(storageUpdates, { merged, colNames, name, delim });
+  });
 }
 
 fileInput.addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;
   fileInput.value = '';
-  await handleImport(file.text ? await file.text() : '', file.name, async (storageUpdates) => {
-    await applyAndReload(storageUpdates);
-  });
+  await handleImport(await file.text(), file.name);
 });
 
-// ── Dashboard button ───────────────────────────────────────────────────────────
+// ── Dashboard button ──────────────────────────────────────────────────────────
 btnDash.addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') });
 });
 
-// ── Analytics snapshot helper (unchanged, but scoped to active profile) ───────
+// ── Analytics snapshot ────────────────────────────────────────────────────────
 async function saveSnapshot(hostname, sentData) {
   const data = await chrome.storage.local.get(['analyticsHistory', 'profiles', 'activeProfileId']);
   let history = data.analyticsHistory || [];
@@ -453,12 +342,9 @@ async function saveSnapshot(hostname, sentData) {
     topMissing: sentData.topMissing || []
   });
   if (history.length > 200) history = history.slice(0, 200);
-
   const profiles = data.profiles || {};
   const activeId = data.activeProfileId;
-  if (activeId && profiles[activeId]) {
-    profiles[activeId].analyticsHistory = history;
-  }
+  if (activeId && profiles[activeId]) profiles[activeId].analyticsHistory = history;
   await chrome.storage.local.set({ analyticsHistory: history, profiles });
 }
 
