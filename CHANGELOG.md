@@ -14,6 +14,8 @@ b. that's/oh should count as function and not be in vocab
 - work on making mmorphological tag bucketing/matching better/ verify it
 - figure out ES, DE, RU, JP
 
+-!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
+
 ## [0.6.0] — 2026-05-21
 ### Added
 - **Inflected forms support** — vocab col3 (comma-separated) stores inflected forms of
