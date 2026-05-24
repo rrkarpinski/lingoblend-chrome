@@ -16,6 +16,11 @@ b. that's/oh should count as function and not be in vocab
 
 -!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
 
+## [0.6.1] — 2026-05-24
+- Fix viewing dashboard on phones
+! vocab table has to be cropped for navbar to work
+! popup display on phone is still small
+
 ## [0.6.0] — 2026-05-21
 ### Added
 - **Inflected forms support** — vocab col3 (comma-separated) stores inflected forms of
