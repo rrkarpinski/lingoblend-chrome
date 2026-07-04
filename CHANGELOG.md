@@ -26,6 +26,16 @@ b. that's/oh should count as function and not be in vocab
 
 -!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
 
+## [0.6.3] - 2026-07-04
+### Changed
+- Popup layout now fills available width/height (min-width 320px, max-width 480px) instead of a fixed 280px box, improving usability on Orion (iOS) and other mobile extension hosts.
+
+## [0.6.2] - 2026-07-04
+### Changed
+- Removed auto-reload-on-change behavior from all popup interactive elements (enable toggle, blend-rate slider, profile switch, site mute, clear vocab, vocab import).
+- Added explicit "Refresh page" button (#btn-refresh) as the only trigger that reloads the active tab.
+- Settings changes now show a "Settings saved — click refresh to apply" hint instead of reloading immediately.
+
 ## [0.6.1] — 2026-05-24
 - Fix viewing dashboard on phones
 ! vocab table has to be cropped for navbar to work

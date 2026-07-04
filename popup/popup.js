@@ -1,58 +1,55 @@
-import {
-  delimForFile, detectDelimiter,
-  parseVocabFull, applyFunctionWordFilter,
-  buildDiff, applyMerge, vocabRowsToText
-} from '../vocab-import.js';
+/**
+ * LingoBlend popup script — v0.6.2
+ * Change from v0.6.1: removed auto-reload-on-change behavior from all
+ * interactive elements (toggle, rate slider, profile switch, site mute,
+ * clear vocab). Replaced with saveSettings() which only persists to
+ * storage and re-renders the popup. Added an explicit "Refresh page"
+ * button (#btn-refresh) as the sole trigger for chrome.tabs.reload().
+ */
+import { delimForFile, detectDelimiter, parseVocabFull, applyFunctionWordFilter, buildDiff, applyMerge, vocabRowsToText } from '../vocab-import.js';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
-const chkEnabled          = document.getElementById('chk-enabled');
-const fileInput           = document.getElementById('file-input');
-const btnClear            = document.getElementById('btn-clear');
-const rateSlider          = document.getElementById('rate-slider');
-const rateVal             = document.getElementById('rate-val');
-const pageStats           = document.getElementById('page-stats');
-const langMismatchNotice  = document.getElementById('lang-mismatch-notice');
-const sentStats           = document.getElementById('sentence-stats');
-const stateEmpty          = document.getElementById('state-empty');
-const stateLoaded         = document.getElementById('state-loaded');
-const vocabName           = document.getElementById('vocab-name');
-const vocabCount          = document.getElementById('vocab-count');
-const siteLine            = document.getElementById('site-line');
-const btnDash             = document.getElementById('btn-dashboard');
-const profileBadge        = document.getElementById('profile-badge');
-const profileBadgeName    = document.getElementById('profile-badge-name');
-const profileDropdown     = document.getElementById('profile-dropdown');
+const chkEnabled = document.getElementById('chk-enabled');
+const fileInput = document.getElementById('file-input');
+const btnClear = document.getElementById('btn-clear');
+const rateSlider = document.getElementById('rate-slider');
+const rateVal = document.getElementById('rate-val');
+const pageStats = document.getElementById('page-stats');
+const langMismatchNotice = document.getElementById('lang-mismatch-notice');
+const sentStats = document.getElementById('sentence-stats');
+const stateEmpty = document.getElementById('state-empty');
+const stateLoaded = document.getElementById('state-loaded');
+const vocabName = document.getElementById('vocab-name');
+const vocabCount = document.getElementById('vocab-count');
+const siteLine = document.getElementById('site-line');
+const btnDash = document.getElementById('btn-dashboard');
+const btnRefresh = document.getElementById('btn-refresh');
+const profileBadge = document.getElementById('profile-badge');
+const profileBadgeName = document.getElementById('profile-badge-name');
+const profileDropdown = document.getElementById('profile-dropdown');
 const profileDropdownList = document.getElementById('profile-dropdown-list');
-const btnManageProfiles   = document.getElementById('btn-manage-profiles');
+const btnManageProfiles = document.getElementById('btn-manage-profiles');
 
 let currentHostname = '';
 let currentTab = null;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-async function applyAndReload(storageUpdates = {}) {
+// Persist storage changes only. No tab reload, no window.close().
+async function saveSettings(storageUpdates = {}) {
   if (Object.keys(storageUpdates).length > 0) {
     await chrome.storage.local.set(storageUpdates);
   }
-  if (!currentTab?.id) return;
-  chrome.tabs.onUpdated.addListener(function listener(tabId, changeInfo) {
-    if (tabId === currentTab.id && changeInfo.status === 'complete') {
-      chrome.tabs.onUpdated.removeListener(listener);
-      setTimeout(() => queryAndRenderStats(currentTab.id), 300);
-    }
-  });
-  chrome.tabs.reload(currentTab.id);
-  window.close();
 }
 
 function syncFlatFromProfile(profile) {
   return {
-    vocabText:        profile.vocabText        || '',
-    vocabName:        profile.vocabName        || '',
-    vocabCount:       profile.vocabCount       || 0,
-    vocabDelimiter:   profile.vocabDelimiter   || '\t',
-    disabledHosts:    profile.disabledHosts    || [],
+    vocabText: profile.vocabText || '',
+    vocabName: profile.vocabName || '',
+    vocabCount: profile.vocabCount || 0,
+    vocabDelimiter: profile.vocabDelimiter || '\t',
+    disabledHosts: profile.disabledHosts || [],
     analyticsHistory: profile.analyticsHistory || [],
-    nativeLanguage:   profile.nativeLanguage   || 'pl'
+    nativeLanguage: profile.nativeLanguage || 'pl'
   };
 }
 
@@ -64,7 +61,16 @@ async function switchProfile(id) {
   profile.lastUsedAt = Date.now();
   profiles[id] = profile;
   const flatKeys = syncFlatFromProfile(profile);
-  await applyAndReload({ activeProfileId: id, profiles, ...flatKeys });
+  await saveSettings({ activeProfileId: id, profiles, ...flatKeys });
+
+  // Re-render popup UI in place (no reload) with the new profile's data.
+  renderProfileBadge(profiles, id);
+  renderProfileDropdown(profiles, id);
+  rateSlider.value = 100; // rate is per-device, kept as-is unless you store per-profile rate
+  if (flatKeys.vocabText) showLoadedState(flatKeys.vocabName || 'vocab', flatKeys.vocabCount || '?');
+  else showEmptyState();
+  profileDropdown.hidden = true;
+  showRefreshHint();
 }
 
 function renderProfileBadge(profiles, activeId) {
@@ -96,6 +102,18 @@ btnManageProfiles.addEventListener('click', () => {
   window.close();
 });
 
+// ── Refresh hint / explicit refresh ──────────────────────────────────────────
+function showRefreshHint() {
+  pageStats.textContent = 'Settings saved — click refresh to apply';
+  pageStats.className = 'page-stats muted';
+}
+
+btnRefresh.addEventListener('click', () => {
+  if (!currentTab?.id) return;
+  chrome.tabs.reload(currentTab.id);
+  window.close();
+});
+
 // ── Lang mismatch ─────────────────────────────────────────────────────────────
 function showLangMismatchNotice(pageLang, nativeLang) {
   langMismatchNotice.textContent = `Page may not be in ${nativeLang.toUpperCase()}`;
@@ -108,10 +126,8 @@ async function init() {
   currentTab = tab;
 
   const data = await chrome.storage.local.get(
-    ['enabled', 'vocabText', 'vocabName', 'vocabCount', 'rate', 'disabledHosts',
-     'profiles', 'activeProfileId', 'nativeLanguage']
+    ['enabled', 'vocabText', 'vocabName', 'vocabCount', 'rate', 'disabledHosts', 'profiles', 'activeProfileId', 'nativeLanguage']
   );
-
   const profiles = data.profiles || {};
   const activeId = data.activeProfileId || '';
   renderProfileBadge(profiles, activeId);
@@ -197,21 +213,28 @@ async function toggleSite() {
   const data = await chrome.storage.local.get(['disabledHosts', 'profiles', 'activeProfileId']);
   let hosts = data.disabledHosts || [];
   const isDisabled = hosts.includes(currentHostname);
-  if (isDisabled) hosts = hosts.filter(h => h !== currentHostname);
-  else hosts.push(currentHostname);
+  hosts = isDisabled ? hosts.filter(h => h !== currentHostname) : [...hosts, currentHostname];
+
   const profiles = data.profiles || {};
   const activeId = data.activeProfileId;
   if (activeId && profiles[activeId]) profiles[activeId].disabledHosts = hosts;
-  await applyAndReload({ disabledHosts: hosts, ...(activeId && profiles[activeId] ? { profiles } : {}) });
+
+  await saveSettings({ disabledHosts: hosts, ...(activeId && profiles[activeId] ? { profiles } : {}) });
+  renderSiteLine(!isDisabled);
+  showRefreshHint();
 }
 
 // ── Controls ──────────────────────────────────────────────────────────────────
 chkEnabled.addEventListener('change', async () => {
-  await applyAndReload({ enabled: chkEnabled.checked });
+  await saveSettings({ enabled: chkEnabled.checked });
+  showRefreshHint();
 });
 
 rateSlider.addEventListener('input', () => { rateVal.textContent = rateSlider.value + '%'; });
-rateSlider.addEventListener('change', () => { applyAndReload({ rate: parseInt(rateSlider.value) }); });
+rateSlider.addEventListener('change', async () => {
+  await saveSettings({ rate: parseInt(rateSlider.value) });
+  showRefreshHint();
+});
 
 btnClear.addEventListener('click', async () => {
   const data = await chrome.storage.local.get(['profiles', 'activeProfileId']);
@@ -222,13 +245,15 @@ btnClear.addEventListener('click', async () => {
     profiles[activeId].vocabName = '';
     profiles[activeId].vocabCount = 0;
   }
-  await applyAndReload({ vocabText: '', vocabName: '', vocabCount: 0, profiles });
+  await saveSettings({ vocabText: '', vocabName: '', vocabCount: 0, profiles });
+  showEmptyState();
+  showRefreshHint();
 });
 
 // ── Vocab import ──────────────────────────────────────────────────────────────
-const modalDiff     = document.getElementById('modal-diff');
+const modalDiff = document.getElementById('modal-diff');
 const modalDiffBody = document.getElementById('modal-diff-body');
-let _diffResolve = null;
+let diffResolve = null;
 
 function showDiffModal(diff, fwStats) {
   let fwLine = '';
@@ -238,52 +263,38 @@ function showDiffModal(diff, fwStats) {
     const rowsT = fwStats.rowsWithRemovedTranslations || 0;
     if (totalDropped > 0 || removedT > 0) {
       const parts = [];
-      if (fwStats.droppedCol1 > 0)
-        parts.push(`${fwStats.droppedCol1} row${fwStats.droppedCol1 !== 1 ? 's' : ''} dropped (col1 function word)`);
-      if (fwStats.droppedCol2Empty > 0)
-        parts.push(`${fwStats.droppedCol2Empty} row${fwStats.droppedCol2Empty !== 1 ? 's' : ''} dropped (all translations filtered)`);
-      if (removedT > 0)
-        parts.push(`${removedT} translation${removedT !== 1 ? 's' : ''} removed from ${rowsT} row${rowsT !== 1 ? 's' : ''}`);
-      fwLine = `<br><span style="color:#7a7974;font-size:0.92em">⊘ Function words: ${parts.join(' · ')}</span>`;
+      if (fwStats.droppedCol1 > 0) parts.push(`${fwStats.droppedCol1} row${fwStats.droppedCol1 !== 1 ? 's' : ''} dropped (col1 function word)`);
+      if (fwStats.droppedCol2Empty > 0) parts.push(`${fwStats.droppedCol2Empty} row${fwStats.droppedCol2Empty !== 1 ? 's' : ''} dropped (all translations filtered)`);
+      if (removedT > 0) parts.push(`${removedT} translation${removedT !== 1 ? 's' : ''} removed from ${rowsT} row${rowsT !== 1 ? 's' : ''}`);
+      fwLine = `<br><span style="color:#7a7974;font-size:0.92em">Function words: ${parts.join(', ')}</span>`;
     }
   }
-  modalDiffBody.innerHTML =
-    `<strong style="color:#437a22">+${diff.newWords.length} added</strong> &nbsp;` +
-    `<strong style="color:#da7101">~${diff.updated.length} modified</strong> &nbsp;` +
-    `<strong style="color:#7a7974">=${diff.unchanged.length} unchanged</strong> &nbsp;` +
-    `<strong style="color:#a12c7b">-${diff.removed.length} removed</strong>` +
-    fwLine;
+  modalDiffBody.innerHTML = `
+    <strong style="color:#437a22">${diff.newWords.length} added</strong>&nbsp;
+    <strong style="color:#da7101">${diff.updated.length} modified</strong>&nbsp;
+    <strong style="color:#7a7974">${diff.unchanged.length} unchanged</strong>&nbsp;
+    <strong style="color:#a12c7b">${diff.removed.length} removed</strong>${fwLine}
+  `;
   modalDiff.style.display = 'flex';
-  return new Promise(res => { _diffResolve = res; });
+  return new Promise(res => { diffResolve = res; });
 }
 
-document.getElementById('diff-add-new').addEventListener('click', () => {
-  modalDiff.style.display = 'none'; _diffResolve?.('addnew'); _diffResolve = null;
-});
-document.getElementById('diff-add-update').addEventListener('click', () => {
-  modalDiff.style.display = 'none'; _diffResolve?.('addupdate'); _diffResolve = null;
-});
-document.getElementById('diff-replace').addEventListener('click', () => {
-  modalDiff.style.display = 'none'; _diffResolve?.('replace'); _diffResolve = null;
-});
-document.getElementById('diff-cancel').addEventListener('click', () => {
-  modalDiff.style.display = 'none'; _diffResolve?.(null); _diffResolve = null;
-});
+document.getElementById('diff-add-new').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.('addnew'); diffResolve = null; });
+document.getElementById('diff-add-update').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.('addupdate'); diffResolve = null; });
+document.getElementById('diff-replace').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.('replace'); diffResolve = null; });
+document.getElementById('diff-cancel').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.(null); diffResolve = null; });
 
 async function handleImport(text, fileName) {
   const lines = text.split(/\r?\n/);
-  const firstLine = lines.find(l => l.trim()) || '';
-
+  const firstLine = lines.find(l => l.trim());
   let delim = delimForFile(fileName);
-  if (!delim || firstLine.split(delim).length < 2) delim = detectDelimiter(firstLine);
+  if (!delim && firstLine) delim = detectDelimiter(firstLine);
   if (!delim) { alert('Could not detect delimiter. File must be tab- or semicolon-separated.'); return; }
 
   const { rows: rawIncoming, colNames } = parseVocabFull(text, delim);
   if (!rawIncoming.length) { alert('No valid rows found in file.'); return; }
 
-  const stored = await chrome.storage.local.get(
-    ['vocabText', 'vocabColNames', 'profiles', 'activeProfileId']
-  );
+  const stored = await chrome.storage.local.get(['vocabText', 'vocabColNames', 'profiles', 'activeProfileId']);
   const activeProfile = (stored.profiles || {})[stored.activeProfileId] || {};
   const targetLang = activeProfile.targetLanguage || null;
   const nativeLang = activeProfile.nativeLanguage || null;
@@ -312,11 +323,9 @@ async function handleImport(text, fileName) {
     profiles[activeId].vocabCount = count;
     profiles[activeId].vocabDelimiter = delim;
   }
-
-  await applyAndReload({
-    vocabText: newText, vocabName: name, vocabCount: count,
-    vocabColNames: colNames, vocabDelimiter: delim, profiles
-  });
+  await saveSettings({ vocabText: newText, vocabName: name, vocabCount: count, vocabColNames: colNames, vocabDelimiter: delim, profiles });
+  showLoadedState(name, count);
+  showRefreshHint();
 }
 
 fileInput.addEventListener('change', async e => {
@@ -339,9 +348,10 @@ async function saveSnapshot(hostname, sentData) {
     hostname, ts: Date.now(),
     avgPct: sentData.avgPct,
     highCoverageCount: sentData.highCoverageCount,
-    topMissing: sentData.topMissing || []
+    topMissing: sentData.topMissing
   });
   if (history.length > 200) history = history.slice(0, 200);
+
   const profiles = data.profiles || {};
   const activeId = data.activeProfileId;
   if (activeId && profiles[activeId]) profiles[activeId].analyticsHistory = history;
