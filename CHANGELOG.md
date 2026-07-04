@@ -1,5 +1,15 @@
 # LingoBlend — Changelog
 ### TODO:
+popup bigger on orion
+popup - simpler - select profile - if no profile then force create profile (force doing that in dashboard/ or not?)
+on profile creation: email, language set, word bank
+popup - if profile exists, then no ability to edit, change upload etc word bank. 
+
+profiles - by email > needed for api for file processing
+allow preexisting profiles on extension install - presetup for mom, dad
+profiles are not secret, no password, just email, language set and related word bank, (and dashboard setings)
+
+### TODO:
 - add sleep before applyandReload() or manual refresh button because refreshing instantly doesnt give time for feedback to user what happened
 - come with profile/vocab inside - for mom, dad, sis
 - add option to download list form duolingo to update
