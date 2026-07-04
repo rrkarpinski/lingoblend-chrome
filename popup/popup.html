@@ -1,110 +1,79 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LingoBlend</title>
-  <link rel="stylesheet" href="popup.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LingoBlend</title>
+<link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header>
-    <img src="../icons/icon48.png" class="logo" alt="LingoBlend">
-    <span class="app-name">LingoBlend</span>
 
-    <!-- PROFILE BADGE (new in v0.5.0) -->
-    <div class="profile-badge-wrap" id="profile-badge-wrap">
-      <button class="profile-badge" id="profile-badge" title="Switch profile">
-        <span id="profile-badge-name">…</span>
-        <span class="profile-badge-caret">▾</span>
-      </button>
-      <div class="profile-dropdown" id="profile-dropdown" hidden>
-        <ul id="profile-dropdown-list"></ul>
-        <div class="profile-dropdown-footer">
-          <button class="profile-dropdown-manage" id="btn-manage-profiles">Manage profiles →</button>
-        </div>
-      </div>
-    </div>
+<header>
+  <img src="../icons/icon48.png" class="logo" alt="LingoBlend">
+  <span class="app-name">LingoBlend</span>
 
-    <button class="btn-dash-icon" id="btn-dashboard" title="Open dashboard">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-        <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-      </svg>
+  <!-- Profile badge — hidden entirely when no profiles exist -->
+  <div class="profile-badge-wrap" id="profile-badge-wrap" hidden>
+    <button class="profile-badge" id="profile-badge" title="Switch profile">
+      <span id="profile-badge-name"></span>
+      <span class="profile-badge-caret">▾</span>
     </button>
-
-    <label class="toggle" title="Enable blending">
-      <input type="checkbox" id="chk-enabled"> <!--new previously: checked>-->
-      <span class="slider"></span>
-    </label>
-  </header>
-
-  <main>
-    <button class="btn-refresh-main" id="btn-refresh" title="Refresh page to apply changes">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="23 4 23 10 17 10"></polyline>
-        <polyline points="1 20 1 14 7 14"></polyline>
-        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-      </svg>
-      <span>Refresh page</span>
-    </button>
-    
-    <!-- Vocabulary card -->
-    <div class="card">
-      <span class="card-label">Vocabulary</span>
-
-    <!-- empty state: import button only when no vocab loaded -->
-      <div id="state-empty">
-        <label class="btn-import" id="btn-import-label">
-          Import vocab file
-          <input type="file" id="file-input" accept=".txt,.tsv,.csv" hidden> <!--new: style="display:none" vs hidden-->
-        </label>
-      </div>
-
-      <!-- loaded state -->
-      <div id="state-loaded" hidden> <!--same as above-->
-        <div class="vocab-row">
-          <span class="vocab-name" id="vocab-name"></span>
-          <span class="vocab-count" id="vocab-count"></span>
-          <button class="btn-clear" id="btn-clear" title="Remove vocab">✕</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Rate card -->
-    <div class="card card-rate">
-      <div class="rate-row">
-        <span class="card-label">Blend rate</span>
-        <strong id="rate-val">100%</strong>
-      </div>
-      <input type="range" id="rate-slider" min="0" max="100" value="100">
-    </div>
-
-    <!-- Page stats and Lang mismatch notice (new in v0.5.0)-->
-    <p class="lang-mismatch-notice" id="lang-mismatch-notice" hidden></p>
-    <p class="page-stats muted" id="page-stats">Open a page to start blending</p>
-
-    <!-- Sentence stats -->
-    <div class="sentence-stats" id="sentence-stats" hidden></div>
-
-    <!-- Site mute line -->
-    <p class="site-line" id="site-line"></p> <!--new previously: div not p-->
-  </main>
-
-  <!-- Import diff modal (unchanged) -->
-  <div class="modal-overlay" id="modal-diff" style="display:none">
-    <div class="modal-box">
-      <div class="modal-title">Import preview</div>
-      <div class="modal-body" id="modal-diff-body"></div>
-      <div class="modal-actions modal-actions--col">
-        <button class="modal-confirm" id="diff-add-new">Add new only</button>
-        <button class="modal-confirm" id="diff-add-update">Add + update</button>
-        <button class="modal-warn" id="diff-replace">Full replace</button>
-        <button class="modal-cancel" id="diff-cancel">Cancel</button>
+    <div class="profile-dropdown" id="profile-dropdown" hidden>
+      <ul id="profile-dropdown-list"></ul>
+      <div class="profile-dropdown-footer">
+        <button class="profile-dropdown-manage" id="btn-manage-profiles">Manage profiles</button>
       </div>
     </div>
   </div>
 
-  <script src="../function-wordlists.js"></script>
-  <script type="module" src="popup.js"></script>
+  <button class="btn-dash-icon" id="btn-dashboard" title="Open dashboard">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect>
+      <rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+    </svg>
+  </button>
+
+  <label class="toggle" title="Enable blending" id="toggle-wrap" hidden>
+    <input type="checkbox" id="chk-enabled">
+    <span class="slider"></span>
+  </label>
+</header>
+
+<!-- No-profile state: only shown when profiles object is empty -->
+<div id="no-profile-panel" class="no-profile-panel" hidden>
+  <p class="no-profile-msg">You don't have a profile yet. Create one to start blending vocabulary into pages you browse.</p>
+  <button class="btn-primary" id="btn-create-first-profile">Create Profile</button>
+</div>
+
+<!-- Normal state: hidden when no profiles exist -->
+<main id="main-panel" hidden>
+  <button class="btn-refresh-main" id="btn-refresh" title="Refresh page to apply changes">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10"></polyline>
+      <polyline points="1 20 1 14 7 14"></polyline>
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+    </svg>
+    <span>Refresh page</span>
+  </button>
+
+  <!-- Rate card -->
+  <div class="card card-rate">
+    <div class="rate-row">
+      <span class="card-label">Blend rate</span>
+      <strong id="rate-val">100%</strong>
+    </div>
+    <input type="range" id="rate-slider" min="0" max="100" value="100">
+  </div>
+
+  <p class="lang-mismatch-notice" id="lang-mismatch-notice" hidden></p>
+  <p class="page-stats muted" id="page-stats">Open a page to start blending</p>
+
+  <div class="sentence-stats" id="sentence-stats" hidden></div>
+
+  <p class="site-line" id="site-line"></p>
+</main>
+
+<script src="../function-wordlists.js"></script>
+<script type="module" src="popup.js"></script>
 </body>
 </html>

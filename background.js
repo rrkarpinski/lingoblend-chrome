@@ -18,28 +18,11 @@ chrome.runtime.onInstalled.addListener(() => {
     if (data.enabled === undefined) updates.enabled = true;
     if (data.rate === undefined) updates.rate = 100;
 
-    // ── Profile migration ──────────────────────────────────────────────────────
+    // v0.7.0: no longer auto-create a default profile. If no profiles
+    // exist, leave `profiles` unset/empty — popup.js detects this and
+    // prompts the user to create one via the dashboard.
     if (!data.profiles) {
-      const id = generateUUID();
-      const now = Date.now();
-      updates.profiles = {
-        [id]: {
-          id,
-          name: 'Default',
-          nativeLanguage: 'pl',
-          targetLanguage: 'en',
-          vocabText: data.vocabText || '',
-          vocabName: data.vocabName || '',
-          vocabCount: data.vocabCount || 0,
-          vocabDelimiter: data.vocabDelimiter || '\t',
-          analyticsHistory: data.analyticsHistory || [],
-          disabledHosts: data.disabledHosts || [],
-          createdAt: now,
-          lastUsedAt: now
-        }
-      };
-      updates.activeProfileId = id;
-      if (data.nativeLanguage === undefined) updates.nativeLanguage = 'pl';
+      updates.profiles = {};
     }
 
     if (Object.keys(updates).length) chrome.storage.local.set(updates);

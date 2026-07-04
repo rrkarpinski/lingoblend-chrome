@@ -48,24 +48,22 @@ main { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
 }
 .card-label { font-size: 11px; color: #7a7974; text-transform: uppercase; letter-spacing: 0.04em; }
 
-.btn-import {
-  display: block; background: #01696f; color: #fff; border-radius: 6px;
-  padding: 7px 12px; font-size: 13px; font-weight: 500; cursor: pointer;
-  text-align: center; transition: background 0.15s; width: 100%;
+.no-profile-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  padding: 24px 18px;
 }
-.btn-import:hover { background: #0c4e54; }
-
-.vocab-row { display: flex; align-items: center; gap: 6px; }
-.vocab-name {
-  flex: 1; font-size: 13px; font-weight: 500;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.no-profile-panel[hidden] {
+  display: none;
 }
-.vocab-count { font-size: 11px; color: #7a7974; white-space: nowrap; }
-.btn-clear {
-  background: none; border: none; color: #a13544; font-size: 13px;
-  font-weight: 700; cursor: pointer; padding: 1px 4px; border-radius: 4px; line-height: 1;
+.no-profile-msg {
+  font-size: 13px;
+  color: #7a7974;
+  line-height: 1.5;
 }
-.btn-clear:hover { background: #f5e8ea; }
 
 .card-rate { gap: 4px; }
 .rate-row { display: flex; justify-content: space-between; align-items: center; }

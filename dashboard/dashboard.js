@@ -1,4 +1,4 @@
-import { delimForFile, detectDelimiter, parseVocabFull, detectFunctionWords, buildDiff, applyMerge, vocabRowsToText } from '../vocab-import.js';
+import { delimForFile, detectDelimiter, parseVocabFull, buildDiff, applyMerge, vocabRowsToText } from '../vocab-import.js';
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn => {
@@ -10,11 +10,18 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
-if (location.hash === '#profiles') {
+const hashParts = (location.hash || '').replace('#', '').split('&');
+if (hashParts.includes('profiles')) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
   document.querySelector('[data-tab="profiles"]').classList.add('active');
   document.getElementById('tab-profiles').classList.add('active');
+}
+if (hashParts.includes('new=1')) {
+  document.getElementById('new-profile-name').value = '';
+  document.getElementById('new-profile-email').value = '';
+  document.getElementById('new-profile-file').value = '';
+  document.getElementById('modal-new-profile').style.display = 'flex';
 }
 
 fetch(chrome.runtime.getURL('manifest.json'))
@@ -221,28 +228,63 @@ function exportProfile(id) {
   URL.revokeObjectURL(url);
 }
 
-// ── New profile modal ─────────────────────────────────────────────────────────
+// ── New profile modal ────────────────────────────────────────────────────────
 document.getElementById('btn-new-profile').addEventListener('click', () => {
   document.getElementById('new-profile-name').value = '';
+  document.getElementById('new-profile-email').value = '';
+  document.getElementById('new-profile-file').value = '';
   document.getElementById('modal-new-profile').style.display = 'flex';
 });
 
 document.getElementById('btn-create-profile-confirm').addEventListener('click', async () => {
   const name = document.getElementById('new-profile-name').value.trim();
-  if (!name) return;
+  const email = document.getElementById('new-profile-email').value.trim();
   const nativeLang = document.getElementById('new-profile-native').value;
   const targetLang = document.getElementById('new-profile-target').value;
+  const fileInput = document.getElementById('new-profile-file');
+  const file = fileInput.files[0];
+
+  if (!name || !email || !file) {
+    alert('Name, email, and a word bank file are all required.');
+    return;
+  }
+
+  const text = await file.text();
+  const lines = text.split(/\r?\n/);
+  const firstLine = lines.find(l => l.trim());
+  let delim = delimForFile(file.name);
+  if (!delim && firstLine) delim = detectDelimiter(firstLine);
+  if (!delim) { alert('Could not detect delimiter. File must be tab- or semicolon-separated.'); return; }
+
+  const { rows, colNames } = parseVocabFull(text, delim);
+  if (!rows.length) { alert('No valid rows found in file.'); return; }
+
+  const vocabText = vocabRowsToText(rows, colNames, delim);
   const id = generateUUID();
   const now = Date.now();
+
   globalProfiles[id] = {
-    id, name,
-    nativeLanguage: nativeLang,
-    targetLanguage: targetLang,
-    vocabText: '', vocabName: '', vocabCount: 0, vocabDelimiter: '\t',
+    id, name, email,
+    nativeLanguage: nativeLang, targetLanguage: targetLang,
+    vocabText, vocabName: file.name.replace(/\.[^.]+$/, ''), vocabCount: rows.length,
+    vocabDelimiter: delim, vocabColNames: colNames,
     analyticsHistory: [], disabledHosts: [],
     createdAt: now, lastUsedAt: now
   };
-  await chrome.storage.local.set({ profiles: globalProfiles });
+  globalActiveId = id;
+
+  await chrome.storage.local.set({ profiles: globalProfiles, activeProfileId: id });
+  await syncFlatFromProfile(globalProfiles[id]);
+  document.getElementById('header-profile-name').textContent = name;
+
+  const parsed = parseVocabFull(vocabText, delim);
+  globalRows = parsed.rows;
+  globalColNames = colNames;
+  globalVocabName = globalProfiles[id].vocabName;
+  renderVocab(globalRows, globalColNames);
+  renderAnalytics([]);
+  renderBlacklist([]);
+
   document.getElementById('modal-new-profile').style.display = 'none';
   renderProfiles();
 });
@@ -436,41 +478,26 @@ document.getElementById('btn-export-dash').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
-// ── Vocab import ──────────────────────────────────────────────────────────────
-const modalDiff    = document.getElementById('modal-diff');
+// ── Vocab import (shared diff modal state) ──────────────────────────────────
+const modalDiff = document.getElementById('modal-diff');
 const modalDiffBody = document.getElementById('modal-diff-body');
-let _diffResolve = null;
+let diffResolve = null;
 
-function showDiffModal(diff, fwStats) {
-  let fwLine = '';
-  if (fwStats && fwStats.totalFlagged > 0) {
-    const parts = [];
-    if (fwStats.targetFlagged > 0) parts.push(`${fwStats.targetFlagged} target word${fwStats.targetFlagged !== 1 ? 's' : ''} flagged`);
-    if (fwStats.translationFlagged > 0) parts.push(`${fwStats.translationFlagged} row${fwStats.translationFlagged !== 1 ? 's' : ''} with a function-word translation`);
-    fwLine = `<br><span style="color:#7a7974;font-size:0.92em">Function words detected: ${parts.join(', ')} (${fwStats.totalFlagged} total, kept in word bank)</span>`;
-  }
+function showDiffModal(diff) {
   modalDiffBody.innerHTML = `
     <strong style="color:#437a22">${diff.newWords.length} added</strong>&nbsp;
     <strong style="color:#da7101">${diff.updated.length} modified</strong>&nbsp;
     <strong style="color:#7a7974">${diff.unchanged.length} unchanged</strong>&nbsp;
-    <strong style="color:#a12c7b">${diff.removed.length} removed</strong>${fwLine}
+    <strong style="color:#a12c7b">${diff.removed.length} removed</strong>
   `;
   modalDiff.style.display = 'flex';
   return new Promise(res => { diffResolve = res; });
 }
 
-document.getElementById('diff-add-new').addEventListener('click', () => {
-  modalDiff.style.display = 'none'; _diffResolve?.('addnew'); _diffResolve = null;
-});
-document.getElementById('diff-add-update').addEventListener('click', () => {
-  modalDiff.style.display = 'none'; _diffResolve?.('addupdate'); _diffResolve = null;
-});
-document.getElementById('diff-replace').addEventListener('click', () => {
-  modalDiff.style.display = 'none'; _diffResolve?.('replace'); _diffResolve = null;
-});
-document.getElementById('diff-cancel').addEventListener('click', () => {
-  modalDiff.style.display = 'none'; _diffResolve?.(null); _diffResolve = null;
-});
+document.getElementById('diff-add-new').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.('addnew'); diffResolve = null; });
+document.getElementById('diff-add-update').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.('addupdate'); diffResolve = null; });
+document.getElementById('diff-replace').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.('replace'); diffResolve = null; });
+document.getElementById('diff-cancel').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.(null); diffResolve = null; });
 
 async function handleImport(text, fileName) {
   const lines = text.split(/\r?\n/);
@@ -479,25 +506,16 @@ async function handleImport(text, fileName) {
   if (!delim && firstLine) delim = detectDelimiter(firstLine);
   if (!delim) { alert('Could not detect delimiter. File must be tab- or semicolon-separated.'); return; }
 
-  const { rows: rawIncoming, colNames: importedColNames } = parseVocabFull(text, delim);
-  if (!rawIncoming.length) { alert('No valid rows found in file.'); return; }
+  const { rows: incoming, colNames } = parseVocabFull(text, delim);
+  if (!incoming.length) { alert('No valid rows found in file.'); return; }
 
   const stored = await chrome.storage.local.get(['vocabText', 'vocabColNames', 'profiles', 'activeProfileId']);
-  const activeProfile = (stored.profiles || {})[stored.activeProfileId] || {};
-  const targetLang = activeProfile.targetLanguage || null;
-  const nativeLang = activeProfile.nativeLanguage || null;
-
-  const { tagged: incoming, fwStats } = detectFunctionWords(rawIncoming, targetLang, nativeLang);
-
-  let colNames = importedColNames;
-  if (!colNames.includes('functionWordDetected')) colNames = [...colNames, 'functionWordDetected'];
-
   const existingText = stored.vocabText || '';
   const existingDelim = existingText.includes('\t') ? '\t' : ';';
   const { rows: existing } = existingText ? parseVocabFull(existingText, existingDelim) : { rows: [] };
 
   const diff = buildDiff(incoming, existing);
-  const mode = await showDiffModal(diff, fwStats);
+  const mode = await showDiffModal(diff);
   if (!mode) return;
 
   const merged = applyMerge(mode, incoming, existing);
@@ -522,10 +540,7 @@ async function handleImport(text, fileName) {
   renderVocab(globalRows, globalColNames);
 }
 
-document.getElementById('btn-import-dash').addEventListener('click', () => {
-  document.getElementById('dash-file-input').click();
-});
-
+document.getElementById('btn-import-dash').addEventListener('click', () => document.getElementById('dash-file-input').click());
 document.getElementById('dash-file-input').addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;

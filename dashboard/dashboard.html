@@ -77,35 +77,40 @@
     </div>
   </div>
 
-  <!-- ── New profile modal (new) ──────────────────────────────────────── -->
+  <!-- New profile modal -->
   <div class="modal-overlay" id="modal-new-profile" style="display:none">
     <div class="modal-box">
       <div class="modal-title">New profile</div>
       <div class="modal-body">
-
         <div class="field">
           <label for="new-profile-name">Name</label>
           <input class="edit-input" id="new-profile-name" placeholder="e.g. Rafał">
         </div>
-
+        <div class="field">
+          <label for="new-profile-email">Email</label>
+          <input class="edit-input" id="new-profile-email" type="email" placeholder="e.g. rafal@example.com">
+        </div>
         <div class="field">
           <label for="new-profile-native">Native language</label>
           <select class="edit-input" id="new-profile-native">
             <option value="pl">PL</option>
-            <option value="en">EN</option>
-            <option value="es">ES</option>
+            <!-- <option value="en">EN</option>
+            <option value="es">ES</option> -->
           </select>
         </div>
-
         <div class="field">
           <label for="new-profile-target">Target language</label>
           <select class="edit-input" id="new-profile-target">
             <option value="en">EN</option>
-            <option value="pl">PL</option>
-            <option value="es">ES</option>
+            <!-- <option value="pl">PL</option>
+            <option value="es">ES</option> -->
           </select>
         </div>
-
+        <div class="field">
+          <label for="new-profile-file">Word bank file</label>
+          <input class="edit-input" id="new-profile-file" type="file" accept=".txt,.tsv,.csv">
+          <span class="hint" id="new-profile-file-hint"></span>
+        </div>
       </div>
       <div class="modal-actions">
         <button class="modal-confirm" id="btn-create-profile-confirm">Create</button>

@@ -26,6 +26,14 @@ b. that's/oh should count as function and not be in vocab
 
 -!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
 
+## [0.7.0] - 2026-07-04
+### Changed
+- Major UI restructuring: all vocabulary import/management moved exclusively to the dashboard. Popup no longer has file upload, clear-vocab, or diff-modal logic.
+- Popup now shows a dedicated empty state ("Create Profile" CTA) when no profiles exist, linking directly to the dashboard's profile-creation flow instead of silently creating a default profile.
+- Dashboard's "New profile" flow now requires name, email, language pair, and a word bank file upfront — profiles are fully populated at creation time rather than needing a follow-up vocab import.
+- Added `email` field to the profile data schema (defaults to empty string for profiles created before this version).
+
+
 ## [0.6.5] - 2026-07-04
 ### Changed
 - Matching engine now uses only the `forms` column (col3) to build substitution patterns — removed the automatic fallback to `translations` (col2) for rows with empty forms. Word banks must have `forms` populated for a row to be matched on the page (enforced upstream via preprocessing).

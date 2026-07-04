@@ -23,7 +23,7 @@ export function detectDelimiter(line) {
 
 const KNOWN_HEADER_TOKENS = new Set([
   'target','word','native','translation','translations', 'duolingo_translations', 'inflections', 'word_type', 'wordtype',
-  'forms','source','notes','comment','tags','functionworddetected'
+  'forms','source','notes','comment','tags'
 ]);
 
 const KNOWN_COLS = ['target', 'translations', 'forms', 'source'];
@@ -58,40 +58,6 @@ export function parseVocabFull(text, delim) {
   }
 
   return { rows, colNames: colNames || KNOWN_COLS.slice(0, 2) };
-}
-
-// ── Function-word tagging ──────────────────────────────────────────────────────
-// No longer removes anything. Tags each row with functionWordDetected: true/false
-// so the extension can surface counts to the user; actual filtering is assumed
-// to happen upstream (e.g. in the user's own Python preprocessing).
-// fwStats: { targetFlagged, translationFlagged, totalFlagged }
-
-export function detectFunctionWords(rows, targetLang, nativeLang) {
-  const fw = window.LB_FW || {};
-  const targetSet = fw[targetLang] || null;
-  const nativeSet = fw[nativeLang] || null;
-
-  let targetFlagged = 0;
-  let translationFlagged = 0;
-
-  const tagged = rows.map(row => {
-    const isTargetFW = !!(targetSet && targetSet.has((row.target || '').toLowerCase()));
-    const transTokens = (row.translations || '').split(',').map(t => t.trim()).filter(Boolean);
-    const hasNativeFW = !!(nativeSet && transTokens.some(t => nativeSet.has(t.toLowerCase())));
-    const detected = isTargetFW || hasNativeFW;
-    if (isTargetFW) targetFlagged++;
-    if (hasNativeFW) translationFlagged++;
-    return { ...row, functionWordDetected: String(detected) };
-  });
-
-  return {
-    tagged,
-    fwStats: {
-      targetFlagged,
-      translationFlagged,
-      totalFlagged: tagged.filter(r => r.functionWordDetected === 'true').length
-    }
-  };
 }
 
 // ── Diff ──────────────────────────────────────────────────────────────────────
