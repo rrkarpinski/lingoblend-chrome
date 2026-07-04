@@ -22,8 +22,8 @@ export function detectDelimiter(line) {
 // ── Parser ────────────────────────────────────────────────────────────────────
 
 const KNOWN_HEADER_TOKENS = new Set([
-  'target','word','native','translation','translations',
-  'forms','source','notes','comment','tags'
+  'target','word','native','translation','translations', 'duolingo_translations', 'inflections', 'word_type', 'wordtype',
+  'forms','source','notes','comment','tags','functionworddetected'
 ]);
 
 const KNOWN_COLS = ['target', 'translations', 'forms', 'source'];
@@ -60,61 +60,37 @@ export function parseVocabFull(text, delim) {
   return { rows, colNames: colNames || KNOWN_COLS.slice(0, 2) };
 }
 
-// ── Function-word filter ──────────────────────────────────────────────────────
-// fwStats: { droppedCol1, droppedCol2Empty, removedTranslations, rowsWithRemovedTranslations }
+// ── Function-word tagging ──────────────────────────────────────────────────────
+// No longer removes anything. Tags each row with functionWordDetected: true/false
+// so the extension can surface counts to the user; actual filtering is assumed
+// to happen upstream (e.g. in the user's own Python preprocessing).
+// fwStats: { targetFlagged, translationFlagged, totalFlagged }
 
-export function applyFunctionWordFilter(rows, targetLang, nativeLang) {
+export function detectFunctionWords(rows, targetLang, nativeLang) {
   const fw = window.LB_FW || {};
   const targetSet = fw[targetLang] || null;
   const nativeSet = fw[nativeLang] || null;
 
-  let droppedCol1 = 0;
-  let droppedCol2Empty = 0;
-  let removedTranslations = 0;
-  let rowsWithRemovedTranslations = 0;
-  const filtered = [];
+  let targetFlagged = 0;
+  let translationFlagged = 0;
 
-  for (const row of rows) {
-    // Step 1: drop row if col1 target is a function word
-    if (targetSet && targetSet.has(row.target.toLowerCase())) {
-      droppedCol1++;
-      continue;
-    }
-
-    // Step 2: filter individual translation tokens in col2
-    let translations = (row.translations || '')
-      .split(',').map(t => t.trim()).filter(Boolean);
-    let removedThisRow = 0;
-    if (nativeSet && translations.length) {
-      const before = translations.length;
-      translations = translations.filter(t => !nativeSet.has(t.toLowerCase()));
-      removedThisRow = before - translations.length;
-      removedTranslations += removedThisRow;
-    }
-
-    // Step 3: drop row if all translations were filtered out
-    if (!translations.length) {
-      droppedCol2Empty++;
-      continue;
-    }
-    if (removedThisRow > 0) rowsWithRemovedTranslations++;
-
-    // Step 4: filter individual form tokens in col3
-    let forms = (row.forms || '').split(',').map(f => f.trim()).filter(Boolean);
-    if (targetSet && forms.length) {
-      forms = forms.filter(f => !targetSet.has(f.toLowerCase()));
-    }
-
-    filtered.push({
-      ...row,
-      translations: translations.join(','),
-      forms: forms.join(','),
-    });
-  }
+  const tagged = rows.map(row => {
+    const isTargetFW = !!(targetSet && targetSet.has((row.target || '').toLowerCase()));
+    const transTokens = (row.translations || '').split(',').map(t => t.trim()).filter(Boolean);
+    const hasNativeFW = !!(nativeSet && transTokens.some(t => nativeSet.has(t.toLowerCase())));
+    const detected = isTargetFW || hasNativeFW;
+    if (isTargetFW) targetFlagged++;
+    if (hasNativeFW) translationFlagged++;
+    return { ...row, functionWordDetected: String(detected) };
+  });
 
   return {
-    filtered,
-    fwStats: { droppedCol1, droppedCol2Empty, removedTranslations, rowsWithRemovedTranslations }
+    tagged,
+    fwStats: {
+      targetFlagged,
+      translationFlagged,
+      totalFlagged: tagged.filter(r => r.functionWordDetected === 'true').length
+    }
   };
 }
 

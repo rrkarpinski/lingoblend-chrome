@@ -6,7 +6,7 @@
  * storage and re-renders the popup. Added an explicit "Refresh page"
  * button (#btn-refresh) as the sole trigger for chrome.tabs.reload().
  */
-import { delimForFile, detectDelimiter, parseVocabFull, applyFunctionWordFilter, buildDiff, applyMerge, vocabRowsToText } from '../vocab-import.js';
+import { delimForFile, detectDelimiter, parseVocabFull, detectFunctionWords, buildDiff, applyMerge, vocabRowsToText } from '../vocab-import.js';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const chkEnabled = document.getElementById('chk-enabled');
@@ -257,17 +257,11 @@ let diffResolve = null;
 
 function showDiffModal(diff, fwStats) {
   let fwLine = '';
-  if (fwStats) {
-    const totalDropped = (fwStats.droppedCol1 || 0) + (fwStats.droppedCol2Empty || 0);
-    const removedT = fwStats.removedTranslations || 0;
-    const rowsT = fwStats.rowsWithRemovedTranslations || 0;
-    if (totalDropped > 0 || removedT > 0) {
-      const parts = [];
-      if (fwStats.droppedCol1 > 0) parts.push(`${fwStats.droppedCol1} row${fwStats.droppedCol1 !== 1 ? 's' : ''} dropped (col1 function word)`);
-      if (fwStats.droppedCol2Empty > 0) parts.push(`${fwStats.droppedCol2Empty} row${fwStats.droppedCol2Empty !== 1 ? 's' : ''} dropped (all translations filtered)`);
-      if (removedT > 0) parts.push(`${removedT} translation${removedT !== 1 ? 's' : ''} removed from ${rowsT} row${rowsT !== 1 ? 's' : ''}`);
-      fwLine = `<br><span style="color:#7a7974;font-size:0.92em">Function words: ${parts.join(', ')}</span>`;
-    }
+  if (fwStats && fwStats.totalFlagged > 0) {
+    const parts = [];
+    if (fwStats.targetFlagged > 0) parts.push(`${fwStats.targetFlagged} target word${fwStats.targetFlagged !== 1 ? 's' : ''} flagged`);
+    if (fwStats.translationFlagged > 0) parts.push(`${fwStats.translationFlagged} row${fwStats.translationFlagged !== 1 ? 's' : ''} with a function-word translation`);
+    fwLine = `<br><span style="color:#7a7974;font-size:0.92em">Function words detected: ${parts.join(', ')} (${fwStats.totalFlagged} total, kept in word bank)</span>`;
   }
   modalDiffBody.innerHTML = `
     <strong style="color:#437a22">${diff.newWords.length} added</strong>&nbsp;
@@ -291,7 +285,7 @@ async function handleImport(text, fileName) {
   if (!delim && firstLine) delim = detectDelimiter(firstLine);
   if (!delim) { alert('Could not detect delimiter. File must be tab- or semicolon-separated.'); return; }
 
-  const { rows: rawIncoming, colNames } = parseVocabFull(text, delim);
+  const { rows: rawIncoming, colNames: importedColNames } = parseVocabFull(text, delim);
   if (!rawIncoming.length) { alert('No valid rows found in file.'); return; }
 
   const stored = await chrome.storage.local.get(['vocabText', 'vocabColNames', 'profiles', 'activeProfileId']);
@@ -299,8 +293,10 @@ async function handleImport(text, fileName) {
   const targetLang = activeProfile.targetLanguage || null;
   const nativeLang = activeProfile.nativeLanguage || null;
 
-  const { filtered: incoming, fwStats } = applyFunctionWordFilter(rawIncoming, targetLang, nativeLang);
-  if (!incoming.length) { alert('No content words remained after function-word filtering.'); return; }
+  const { tagged: incoming, fwStats } = detectFunctionWords(rawIncoming, targetLang, nativeLang);
+
+  let colNames = importedColNames;
+  if (!colNames.includes('functionWordDetected')) colNames = [...colNames, 'functionWordDetected'];
 
   const existingText = stored.vocabText || '';
   const existingDelim = existingText.includes('\t') ? '\t' : ';';

@@ -1,8 +1,4 @@
-import {
-  delimForFile, detectDelimiter,
-  parseVocabFull, applyFunctionWordFilter,
-  buildDiff, applyMerge, vocabRowsToText
-} from '../vocab-import.js';
+import { delimForFile, detectDelimiter, parseVocabFull, detectFunctionWords, buildDiff, applyMerge, vocabRowsToText } from '../vocab-import.js';
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn => {
@@ -487,24 +483,23 @@ document.getElementById('diff-cancel').addEventListener('click', () => {
 
 async function handleImport(text, fileName) {
   const lines = text.split(/\r?\n/);
-  const firstLine = lines.find(l => l.trim()) || '';
-
+  const firstLine = lines.find(l => l.trim());
   let delim = delimForFile(fileName);
-  if (!delim || firstLine.split(delim).length < 2) delim = detectDelimiter(firstLine);
+  if (!delim && firstLine) delim = detectDelimiter(firstLine);
   if (!delim) { alert('Could not detect delimiter. File must be tab- or semicolon-separated.'); return; }
 
-  const { rows: rawIncoming, colNames } = parseVocabFull(text, delim);
+  const { rows: rawIncoming, colNames: importedColNames } = parseVocabFull(text, delim);
   if (!rawIncoming.length) { alert('No valid rows found in file.'); return; }
 
-  const stored = await chrome.storage.local.get(
-    ['vocabText', 'vocabColNames', 'profiles', 'activeProfileId']
-  );
+  const stored = await chrome.storage.local.get(['vocabText', 'vocabColNames', 'profiles', 'activeProfileId']);
   const activeProfile = (stored.profiles || {})[stored.activeProfileId] || {};
   const targetLang = activeProfile.targetLanguage || null;
   const nativeLang = activeProfile.nativeLanguage || null;
 
-  const { filtered: incoming, fwStats } = applyFunctionWordFilter(rawIncoming, targetLang, nativeLang);
-  if (!incoming.length) { alert('No content words remained after function-word filtering.'); return; }
+  const { tagged: incoming, fwStats } = detectFunctionWords(rawIncoming, targetLang, nativeLang);
+
+  let colNames = importedColNames;
+  if (!colNames.includes('functionWordDetected')) colNames = [...colNames, 'functionWordDetected'];
 
   const existingText = stored.vocabText || '';
   const existingDelim = existingText.includes('\t') ? '\t' : ';';
@@ -531,10 +526,8 @@ async function handleImport(text, fileName) {
   globalRows = merged;
   globalColNames = colNames;
   globalVocabName = name;
-  await chrome.storage.local.set({
-    vocabText: newText, vocabName: name, vocabCount: count,
-    vocabColNames: colNames, vocabDelimiter: delim, profiles
-  });
+
+  await chrome.storage.local.set({ vocabText: newText, vocabName: name, vocabCount: count, vocabColNames: colNames, vocabDelimiter: delim, profiles });
   renderVocab(globalRows, globalColNames);
 }
 

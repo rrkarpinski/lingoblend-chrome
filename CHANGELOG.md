@@ -26,6 +26,11 @@ b. that's/oh should count as function and not be in vocab
 
 -!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
 
+## [0.6.4] - 2026-07-04
+### Changed
+- Function-word filtering no longer removes words/rows from imported vocab. Instead, each row is tagged with a `functionWordDetected` column (true/false), and the import summary reports how many target words and translations were flagged.
+- Word banks are now assumed to already be preprocessed (e.g. via external Python pipeline); the extension performs detection only, not removal.
+
 ## [0.6.3] - 2026-07-04
 ### Changed
 - Popup layout now fills available width/height (min-width 320px, max-width 480px) instead of a fixed 280px box, improving usability on Orion (iOS) and other mobile extension hosts.
