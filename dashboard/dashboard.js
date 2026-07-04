@@ -443,29 +443,20 @@ let _diffResolve = null;
 
 function showDiffModal(diff, fwStats) {
   let fwLine = '';
-  if (fwStats) {
-    const totalDropped = (fwStats.droppedCol1 || 0) + (fwStats.droppedCol2Empty || 0);
-    const removedT = fwStats.removedTranslations || 0;
-    const rowsT = fwStats.rowsWithRemovedTranslations || 0;
-    if (totalDropped > 0 || removedT > 0) {
-      const parts = [];
-      if (fwStats.droppedCol1 > 0)
-        parts.push(`${fwStats.droppedCol1} row${fwStats.droppedCol1 !== 1 ? 's' : ''} dropped (col1 function word)`);
-      if (fwStats.droppedCol2Empty > 0)
-        parts.push(`${fwStats.droppedCol2Empty} row${fwStats.droppedCol2Empty !== 1 ? 's' : ''} dropped (all translations filtered)`);
-      if (removedT > 0)
-        parts.push(`${removedT} translation${removedT !== 1 ? 's' : ''} removed from ${rowsT} row${rowsT !== 1 ? 's' : ''}`);
-      fwLine = `<br><span style="color:#7a7974;font-size:0.92em">⊘ Function words: ${parts.join(' · ')}</span>`;
-    }
+  if (fwStats && fwStats.totalFlagged > 0) {
+    const parts = [];
+    if (fwStats.targetFlagged > 0) parts.push(`${fwStats.targetFlagged} target word${fwStats.targetFlagged !== 1 ? 's' : ''} flagged`);
+    if (fwStats.translationFlagged > 0) parts.push(`${fwStats.translationFlagged} row${fwStats.translationFlagged !== 1 ? 's' : ''} with a function-word translation`);
+    fwLine = `<br><span style="color:#7a7974;font-size:0.92em">Function words detected: ${parts.join(', ')} (${fwStats.totalFlagged} total, kept in word bank)</span>`;
   }
-  modalDiffBody.innerHTML =
-    `<strong style="color:#437a22">+${diff.newWords.length} added</strong> &nbsp;` +
-    `<strong style="color:#da7101">~${diff.updated.length} modified</strong> &nbsp;` +
-    `<strong style="color:#7a7974">=${diff.unchanged.length} unchanged</strong> &nbsp;` +
-    `<strong style="color:#a12c7b">-${diff.removed.length} removed</strong>` +
-    fwLine;
+  modalDiffBody.innerHTML = `
+    <strong style="color:#437a22">${diff.newWords.length} added</strong>&nbsp;
+    <strong style="color:#da7101">${diff.updated.length} modified</strong>&nbsp;
+    <strong style="color:#7a7974">${diff.unchanged.length} unchanged</strong>&nbsp;
+    <strong style="color:#a12c7b">${diff.removed.length} removed</strong>${fwLine}
+  `;
   modalDiff.style.display = 'flex';
-  return new Promise(res => { _diffResolve = res; });
+  return new Promise(res => { diffResolve = res; });
 }
 
 document.getElementById('diff-add-new').addEventListener('click', () => {
