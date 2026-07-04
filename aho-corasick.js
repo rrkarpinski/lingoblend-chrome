@@ -15,13 +15,13 @@ class AhoCorasick {
 
   /**
    * Register all patterns for one vocab entry.
-   * Patterns: entry.forms if non-empty, else entry.translations (string[]).
+   * v0.6.5: patterns come exclusively from entry.forms — no fallback to
+   * translations. Rows with empty forms register no patterns (by design,
+   * since forms are guaranteed clean via external preprocessing).
    * All patterns point back to the same entry object.
    */
   addEntry(entry) {
-    const patterns = (entry.forms && entry.forms.length > 0)
-      ? entry.forms
-      : entry.translations;
+    const patterns = entry.forms || [];
     for (const pattern of patterns) {
       const p = pattern.toLowerCase();
       if (!p) continue;

@@ -167,8 +167,8 @@ function parseVocab(text) {
 
   // Sort by longest pattern first (longest translation token) for greedy matching preference
   entries.sort((a, b) => {
-    const aMax = Math.max(...(a.forms.length ? a.forms : a.translations).map(s => s.length));
-    const bMax = Math.max(...(b.forms.length ? b.forms : b.translations).map(s => s.length));
+    const aMax = a.forms.length ? Math.max(...a.forms.map(s => s.length)) : 0;
+    const bMax = b.forms.length ? Math.max(...b.forms.map(s => s.length)) : 0;
     return bMax - aMax;
   });
 

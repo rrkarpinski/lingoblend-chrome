@@ -26,6 +26,11 @@ b. that's/oh should count as function and not be in vocab
 
 -!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
 
+## [0.6.5] - 2026-07-04
+### Changed
+- Matching engine now uses only the `forms` column (col3) to build substitution patterns — removed the automatic fallback to `translations` (col2) for rows with empty forms. Word banks must have `forms` populated for a row to be matched on the page (enforced upstream via preprocessing).
+- Tooltip display is unaffected and continues to show the `translations` column.
+
 ## [0.6.4] - 2026-07-04
 ### Changed
 - Function-word filtering no longer removes words/rows from imported vocab. Instead, each row is tagged with a `functionWordDetected` column (true/false), and the import summary reports how many target words and translations were flagged.
