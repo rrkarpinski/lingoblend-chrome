@@ -223,7 +223,7 @@ function exportProfile(id) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `lingoblend-profile-${profile.name.replace(/\s+/g, '_')}.json`;
+  a.download = `lingoblend-profile-${profile.id.replace(/\s+/g, '_')}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }

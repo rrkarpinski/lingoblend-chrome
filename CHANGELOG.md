@@ -26,6 +26,10 @@ b. that's/oh should count as function and not be in vocab
 
 -!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
 
+## [0.7.2] - 2026-07-04
+### Added
+- Preloaded/seed profiles: extension can now ship with a `profiles/` directory containing individual profile export `.json` files plus an `index.json` listing their filenames. On install or update, any seed profile not already present in storage (matched by id) is merged in automatically, giving users a starting selection of profiles to pick from.
+
 ## [0.7.1] - 2026-07-04
 ### Fixed
 - New profiles are now set active immediately upon creation, with flat storage keys synced so popup/content script pick them up without needing a manual profile switch.
