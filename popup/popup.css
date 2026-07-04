@@ -8,8 +8,7 @@ body {
   font-size: 14px; background: #f7f6f2; color: #28251d;
   min-width: 320px;
   max-width: 480px;
-  min-height: 100vh;
-  margin: 0 auto;
+  min-height: 100%;
 }
 
 header {

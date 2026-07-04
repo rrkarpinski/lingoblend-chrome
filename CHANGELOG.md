@@ -26,6 +26,16 @@ b. that's/oh should count as function and not be in vocab
 
 -!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
 
+## [0.7.3] - 2026-07-04
+### Fixed
+- Mobile bottom navbar (dashboard, <767px) now spans full viewport width instead of shrinking to content (`left: 0; right: 0; width: 100%` on `.tabs`).
+- Bottom navbar tabs now squish proportionally via flexbox (`flex: 1 1 auto` + 1% horizontal padding) so tabs shrink gracefully with screen width, keeping full label text visible far longer before truncating.
+- Vocabulary table now scrolls horizontally within its own `.data-table-wrap` container (applied unconditionally, not just on mobile) instead of overflowing the page with no way to see clipped columns.
+- Fixed popup sizing regression from mid-development where `height: 100%` + `overflow: hidden` collapsed the popup below its header; reverted to `min-height`-based sizing so the popup grows to fit content again.
+- Added matching background color on `<html>` (not just `<body>`) to close a hairline transparent gap at the popup's edges.
+### Changed
+- Language mismatch notice now reads "Looks like the page is in {LANG}, not {LANG}" instead of the shorter previous phrasing.
+
 ## [0.7.2] - 2026-07-04
 ### Added
 - Preloaded/seed profiles: extension can now ship with a `profiles/` directory containing individual profile export `.json` files plus an `index.json` listing their filenames. On install or update, any seed profile not already present in storage (matched by id) is merged in automatically, giving users a starting selection of profiles to pick from.

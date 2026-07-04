@@ -113,7 +113,7 @@ btnRefresh.addEventListener('click', () => {
 
 // ── Lang mismatch ─────────────────────────────────────────────────────────────
 function showLangMismatchNotice(pageLang, nativeLang) {
-  langMismatchNotice.textContent = `Page may not be in ${nativeLang.toUpperCase()}`;
+  langMismatchNotice.textContent = `Looks like the page is in ${pageLang.toUpperCase()}, not ${nativeLang.toUpperCase()}`;
   langMismatchNotice.hidden = false;
 }
 

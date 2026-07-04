@@ -22,6 +22,7 @@ header {
   background: none; border: none; padding: 12px 20px; font-size: 14px;
   cursor: pointer; color: #7a7974; border-bottom: 2px solid transparent;
   transition: color 0.15s, border-color 0.15s;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .tab.active { color: #01696f; border-bottom-color: #01696f; font-weight: 600; }
 .tab:hover:not(.active) { color: #28251d; }
@@ -338,40 +339,30 @@ header {
   }
   html, body {
     overflow-x: hidden;
-    /*max-width: 100%;*/
   }
   .tabs {
-    position: fixed; bottom:0; top: auto;
+    position: fixed; bottom: 0; top: auto;
+    left: 0; right: 0;
+    width: 100%;
+    display: flex;
     padding: 8px;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
     background: #fff;
     border-top: 1px solid #dcd9d5;
     border-bottom: none;
   }
-  
-
-  .tab-content {
-    padding: 16px;
-    padding-bottom: 84px;
+  .tab {
+    flex: 1 1 auto;
+    padding-left: 1%;
+    padding-right: 1%;
   }
-
   .profile-card {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
   }
-
-/*  .data-table-wrap {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-*/
-/*
-  .modal-box {
-    width: min(100vw - 24px, 420px);
-    max-height: 85vh;
-    overflow: auto;
-  }
-*/
+  
+}
+.data-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
