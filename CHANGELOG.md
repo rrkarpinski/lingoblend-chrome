@@ -26,6 +26,14 @@ b. that's/oh should count as function and not be in vocab
 
 -!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
 
+## [0.7.1] - 2026-07-04
+### Fixed
+- New profiles are now set active immediately upon creation, with flat storage keys synced so popup/content script pick them up without needing a manual profile switch.
+- Fixed `diffResolve is not defined` error when importing vocab in the dashboard due to scoping issue in diff-modal button handlers.
+- Fixed "no profile / create profile" panel remaining visible in the popup after a profile was created and activated — caused by `[hidden]` attribute being overridden by an author stylesheet rule (`.no-profile-panel { display: flex }` beat the browser's default `[hidden]` rule).
+### Removed
+- Reverted function-word detection/tagging (introduced in 0.6.4). Word banks are now assumed fully preprocessed externally (e.g. via the user's own Python pipeline); the extension no longer checks for, flags, tags, or reports function words at any stage of import or profile creation.
+
 ## [0.7.0] - 2026-07-04
 ### Changed
 - Major UI restructuring: all vocabulary import/management moved exclusively to the dashboard. Popup no longer has file upload, clear-vocab, or diff-modal logic.
