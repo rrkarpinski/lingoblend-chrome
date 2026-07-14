@@ -1,30 +1,9 @@
 # LingoBlend — Changelog
-### TODO:
-popup bigger on orion
-popup - simpler - select profile - if no profile then force create profile (force doing that in dashboard/ or not?)
-on profile creation: email, language set, word bank
-popup - if profile exists, then no ability to edit, change upload etc word bank. 
-
-profiles - by email > needed for api for file processing
-allow preexisting profiles on extension install - presetup for mom, dad
-profiles are not secret, no password, just email, language set and related word bank, (and dashboard setings)
 
 ### TODO:
-- add sleep before applyandReload() or manual refresh button because refreshing instantly doesnt give time for feedback to user what happened
-- come with profile/vocab inside - for mom, dad, sis
 - add option to download list form duolingo to update
-- fix table sizing. now: vocab table has to be cropped   `html, body {overflow-x: hidden;` otherwise the navbar is pushed way down and modal is in the middle of the table instead of middle of the screen
-- preprocessing heuristic smaller set wins - exhasberates duolingo bad translations more than matching first translation
-a.matches bad duolingo translations with usefull english words (po - across, not after; to - that's instead of this/it)
-b. that's/oh should count as function and not be in vocab
-
-- add proper target word translation instead of sometimes inaccurate duolingo ones; use packaged static dictionary > to avoid unknown translations maybe match with duolingo translations
-- lemantize target word > match morph tag beween target and native to match usage
-- integrate machine translation with Bergamot for offline contextual sentence translation of DeepL through API
-- work on making mmorphological tag bucketing/matching better/ verify it
 - figure out ES, DE, RU, JP
 
--!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
 
 ## [0.8.1] - 2026-07-14
 ### Changed
