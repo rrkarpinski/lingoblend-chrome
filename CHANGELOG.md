@@ -4,6 +4,12 @@
 - add option to download list form duolingo to update
 - figure out ES, DE, RU, JP
 
+## [0.8.2] - 2026-07-14
+### Changed
+- Tooltip color/order swapped: native word now shown unbracketed in the lighter shade, Duolingo-style translations now bracketed and shown in a mid-tone (darker than the native word, but lighter than the previous scheme).
+### Fixed
+- Fixed whitespace collapsing around injected `.lb-word` spans — a plain space sitting directly before, after, or between spans could render with no visible gap on some pages (e.g. headings with custom letter/word-spacing CSS). Boundary spaces adjacent to a span are now swapped to a non-breaking space (`&nbsp;`) at substitution time, leaving all other whitespace in the page untouched.
+- Fixed `Uncaught TypeError: Cannot read properties of null (reading 'replaceChild')` on pages with aggressive async DOM mutation (e.g. Google's AI-generated answer box). Debounced mutation-observer processing could fire after a queued text node had already been detached from the DOM by the host page; `processTextNode()` now checks `textNode.parentNode` before processing and again before replacement, skipping detached nodes safely instead of throwing.
 
 ## [0.8.1] - 2026-07-14
 ### Changed

@@ -46,8 +46,8 @@ function injectStyles() {
   transition: opacity 0.15s ease;
   white-space: nowrap;
 }
-#${LB_TOOLTIP_ID} .lb-original { color: #797876; margin-right: 6px; }
-#${LB_TOOLTIP_ID} .lb-all-trans { color: #cdccca; }
+#${LB_TOOLTIP_ID} .lb-original { color: #cdccca; margin-right: 6px; }
+#${LB_TOOLTIP_ID} .lb-all-trans { color: #a8a6a2; }
 `;
   document.head.appendChild(s);
 }
@@ -73,12 +73,12 @@ function showTooltip(nativeWord, translations, anchorEl) {
 
   const orig = document.createElement('span');
   orig.className = 'lb-original';
-  orig.textContent = '(' + nativeWord + ')';
+  orig.textContent = nativeWord;
   tip.appendChild(orig);
 
   const trans = document.createElement('span');
   trans.className = 'lb-all-trans';
-  trans.textContent = translations;
+  trans.textContent = '(' + translations + ')';
   tip.appendChild(trans);
 
   tip.style.opacity = '0';
@@ -241,6 +241,7 @@ function nextTextChar(node) {
 function processTextNode(textNode, ac, rand) {
   const text = textNode.nodeValue;
   if (!text || !text.trim()) return;
+  if (!textNode.parentNode) return;
   if (textNode.parentElement?.classList?.contains(LB_CLASS)) return;
 
   const charBefore = prevTextChar(textNode);
@@ -254,7 +255,12 @@ function processTextNode(textNode, ac, rand) {
   const frag = document.createDocumentFragment();
   let cursor = 0;
   for (const { start, end, entry } of active) {
-    if (start > cursor) frag.appendChild(document.createTextNode(text.slice(cursor, start)));
+    if (start > cursor) {
+      let before = text.slice(cursor, start);
+      if (cursor > 0 && before.startsWith(' ')) before = '\u00A0' + before.slice(1);
+      if (before.endsWith(' ')) before = before.slice(0, -1) + '\u00A0';
+      frag.appendChild(document.createTextNode(before));
+    }
     const original = text.slice(start, end);
     const span = document.createElement('span');
     span.className = LB_CLASS;
@@ -265,7 +271,12 @@ function processTextNode(textNode, ac, rand) {
     blendedCount++;
     cursor = end;
   }
-  if (cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)));
+  if (cursor < text.length) {
+    let after = text.slice(cursor);
+    if (after.startsWith(' ')) after = '\u00A0' + after.slice(1);
+    frag.appendChild(document.createTextNode(after));
+  }
+  if (!textNode.parentNode) return;
   textNode.parentNode.replaceChild(frag, textNode);
 }
 
