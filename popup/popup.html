@@ -10,30 +10,30 @@
 
 <header>
   <img src="../icons/icon48.png" class="logo" alt="LingoBlend">
-  <span class="app-name">LingoBlend</span>
+  <span class="app-name" data-i18n="app_name">LingoBlend</span>
 
   <!-- Profile badge — hidden entirely when no profiles exist -->
   <div class="profile-badge-wrap" id="profile-badge-wrap" hidden>
-    <button class="profile-badge" id="profile-badge" title="Switch profile">
+    <button class="profile-badge" id="profile-badge" title="Switch profile" data-i18n-title="tooltip_switch_profile">
       <span id="profile-badge-name"></span>
       <span class="profile-badge-caret">▾</span>
     </button>
     <div class="profile-dropdown" id="profile-dropdown" hidden>
       <ul id="profile-dropdown-list"></ul>
       <div class="profile-dropdown-footer">
-        <button class="profile-dropdown-manage" id="btn-manage-profiles">Manage profiles</button>
+        <button class="profile-dropdown-manage" id="btn-manage-profiles" data-i18n="manage_profiles">Manage profiles</button>
       </div>
     </div>
   </div>
 
-  <button class="btn-dash-icon" id="btn-dashboard" title="Open dashboard">
+  <button class="btn-dash-icon" id="btn-dashboard" title="Open dashboard" data-i18n-title="tooltip_open_dashboard">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect>
       <rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
     </svg>
   </button>
 
-  <label class="toggle" title="Enable blending" id="toggle-wrap" hidden>
+  <label class="toggle" title="Enable blending" id="toggle-wrap" hidden data-i18n-title="tooltip_enable_blending">
     <input type="checkbox" id="chk-enabled">
     <span class="slider"></span>
   </label>
@@ -41,32 +41,32 @@
 
 <!-- No-profile state: only shown when profiles object is empty -->
 <div id="no-profile-panel" class="no-profile-panel" hidden>
-  <p class="no-profile-msg">You don't have a profile yet. Create one to start blending vocabulary into pages you browse.</p>
-  <button class="btn-primary" id="btn-create-first-profile">Create Profile</button>
+  <p class="no-profile-msg" data-i18n="no_profile_msg">You don't have a profile yet. Create one to start blending vocabulary into pages you browse.</p>
+  <button class="btn-primary" id="btn-create-first-profile" data-i18n="btn_create_profile">Create Profile</button>
 </div>
 
 <!-- Normal state: hidden when no profiles exist -->
 <main id="main-panel" hidden>
-  <button class="btn-refresh-main" id="btn-refresh" title="Refresh page to apply changes">
+  <button class="btn-refresh-main" id="btn-refresh" title="Refresh page to apply changes" data-i18n-title="tooltip_refresh_page">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="23 4 23 10 17 10"></polyline>
       <polyline points="1 20 1 14 7 14"></polyline>
       <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
     </svg>
-    <span>Refresh page</span>
+    <span data-i18n="refresh_page_btn">Refresh page</span>
   </button>
 
   <!-- Rate card -->
   <div class="card card-rate">
     <div class="rate-row">
-      <span class="card-label">Blend rate</span>
+      <span class="card-label" data-i18n="blend_rate_label">Blend rate</span>
       <strong id="rate-val">100%</strong>
     </div>
     <input type="range" id="rate-slider" min="0" max="100" value="100">
   </div>
 
   <p class="lang-mismatch-notice" id="lang-mismatch-notice" hidden></p>
-  <p class="page-stats muted" id="page-stats">Open a page to start blending</p>
+  <p class="page-stats muted" id="page-stats" data-i18n="page_stats_default">Open a page to start blending</p>
 
   <div class="sentence-stats" id="sentence-stats" hidden></div>
 

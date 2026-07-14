@@ -1,4 +1,18 @@
+import { initI18n, setLang, getLang, t, applyStaticI18n } from '../i18n.js';
 import { delimForFile, detectDelimiter, parseVocabFull, buildDiff, applyMerge, vocabRowsToText } from '../vocab-import.js';
+
+// ── i18n boot ─────────────────────────────────────────────────────────────────
+await initI18n();
+applyStaticI18n();
+document.getElementById('lang-select').value = getLang();
+document.getElementById('lang-select').addEventListener('change', async e => {
+  await setLang(e.target.value);
+  applyStaticI18n();
+  renderProfiles();
+  renderAnalytics(globalProfiles[globalActiveId]?.analyticsHistory || []);
+  renderVocab(globalRows, globalColNames);
+  renderBlacklist(globalProfiles[globalActiveId]?.disabledHosts || []);
+});
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn => {
@@ -107,18 +121,18 @@ function renderProfiles() {
         <div class="profile-card-name-row">
           <span class="profile-card-name" id="pname-${id}">${p.name}</span>
           <input class="profile-card-name-input" id="pname-input-${id}" value="${p.name}" hidden>
-          <span class="btn-edit-name" data-id="${id}" title="Edit name">✎</span>
+          <span class="btn-edit-name" data-id="${id}" title="${t('tooltip_edit_name')}">✎</span>
         </div>
         <div class="profile-card-meta">
           <span class="profile-card-lang">${nL} → ${tL}</span>
-          <span>${wordCount} words</span>
-          <span>Last used: ${lastUsed}</span>
+          <span>${t('words_count', { count: wordCount })}</span>
+          <span>${t('last_used', { date: lastUsed })}</span>
         </div>
       </div>
       <div class="profile-card-actions">
-        <button class="btn-profile-action btn-set-active" data-id="${id}" ${isActive ? 'disabled' : ''}>Set active</button>
-        <button class="btn-profile-action btn-delete-profile" data-id="${id}" ${count <= 1 ? 'disabled' : ''}>Delete</button>
-        <button class="btn-profile-action btn-export-profile" data-id="${id}">Export</button>
+        <button class="btn-profile-action btn-set-active" data-id="${id}" ${isActive ? 'disabled' : ''}>${t('btn_set_active')}</button>
+        <button class="btn-profile-action btn-delete-profile" data-id="${id}" ${count <= 1 ? 'disabled' : ''}>${t('btn_delete')}</button>
+        <button class="btn-profile-action btn-export-profile" data-id="${id}">${t('btn_export_profile')}</button>
       </div>`;
     container.appendChild(card);
   }
@@ -245,7 +259,7 @@ document.getElementById('btn-create-profile-confirm').addEventListener('click', 
   const file = fileInput.files[0];
 
   if (!name || !email || !file) {
-    alert('Name, email, and a word bank file are all required.');
+    alert(t('require_fields_alert'));
     return;
   }
 
@@ -254,10 +268,10 @@ document.getElementById('btn-create-profile-confirm').addEventListener('click', 
   const firstLine = lines.find(l => l.trim());
   let delim = delimForFile(file.name);
   if (!delim && firstLine) delim = detectDelimiter(firstLine);
-  if (!delim) { alert('Could not detect delimiter. File must be tab- or semicolon-separated.'); return; }
+  if (!delim) { alert(t('delimiter_error')); return; }
 
   const { rows, colNames } = parseVocabFull(text, delim);
-  if (!rows.length) { alert('No valid rows found in file.'); return; }
+  if (!rows.length) { alert(t('no_valid_rows')); return; }
 
   const vocabText = vocabRowsToText(rows, colNames, delim);
   const id = generateUUID();
@@ -309,7 +323,7 @@ document.getElementById('profile-file-input').addEventListener('change', async e
     await chrome.storage.local.set({ profiles: globalProfiles });
     renderProfiles();
   } catch (_) {
-    alert('Invalid profile file.');
+    alert(t('invalid_profile_file'));
   }
 });
 
@@ -319,7 +333,7 @@ function renderAnalytics(history) {
   const sites = new Set(history.map(h => h.hostname)).size;
   const avgPct = history.length
     ? Math.round(history.reduce((s, h) => s + h.avgPct, 0) / history.length) : 0;
-  const totalHighCov = history.reduce((s, h) => s + (h.highCoverageCount || 0), 0);
+  const totalHighCov = history.reduce((s, h) => s + (h.highCoverageCount || 0), 0); //unused - total count of high-coverage sentences across all sessions
   const missingFreq = {};
   for (const entry of history)
     for (const w of (entry.topMissing || []))
@@ -329,29 +343,29 @@ function renderAnalytics(history) {
 
   document.getElementById('summary-cards').innerHTML = `
     <div class="summary-card">
-      <span class="card-label">Sessions</span>
+      <span class="card-label">${t('sessions_label')}</span>
       <span class="card-val">${totalSessions}</span>
-      <span class="card-sub">pages analysed</span>
+      <span class="card-sub">${t('sessions_sub')}</span>
     </div>
     <div class="summary-card">
-      <span class="card-label">Sites</span>
+      <span class="card-label">${t('sites_label')}</span>
       <span class="card-val">${sites}</span>
-      <span class="card-sub">unique hostnames</span>
+      <span class="card-sub">${t('sites_sub')}</span>
     </div>
     <div class="summary-card">
-      <span class="card-label">Avg sentence coverage</span>
+      <span class="card-label">${t('avg_coverage_card')}</span>
       <span class="card-val">${avgPct}%</span>
-      <span class="card-sub">words known per sentence</span>
+      <span class="card-sub">${t('avg_coverage_sub')}</span>
     </div>
     <div class="summary-card">
-      <span class="card-label">Missing links found</span>
+      <span class="card-label">${t('missing_links_card')}</span>
       <span class="card-val">${sortedMissing.length}</span>
-      <span class="card-sub">unique missing words</span>
+      <span class="card-sub">${t('missing_links_sub')}</span>
     </div>`;
 
   const cloud = document.getElementById('missing-cloud');
   if (!sortedMissing.length) {
-    cloud.innerHTML = '<span style="color:#bab9b4;font-size:13px">No data yet.</span>';
+    cloud.innerHTML = `<span style="color:#bab9b4;font-size:13px">${t('no_data_yet')}</span>`;
   } else {
     cloud.innerHTML = sortedMissing.map(([w, f]) => {
       const cls = f >= maxFreq * 0.6 ? 'word-chip freq-high' : f >= maxFreq * 0.3 ? 'word-chip freq-med' : 'word-chip';
@@ -361,7 +375,7 @@ function renderAnalytics(history) {
 
   const list = document.getElementById('history-list');
   if (!history.length) {
-    list.innerHTML = '<p class="empty-msg">No history yet.</p>';
+    list.innerHTML = `<p class="empty-msg">${t('no_history')}</p>`;
     return;
   }
   list.innerHTML = history.map(h => {
@@ -372,9 +386,9 @@ function renderAnalytics(history) {
     return `<div class="history-row">
       <span class="history-hostname">${h.hostname}</span>
       <span class="history-ts">${dateStr} ${timeStr}</span>
-      <span class="history-pct">${h.avgPct}% coverage</span>
-      <span class="history-missing">${h.highCoverageCount} high-cov</span>
-      ${preview ? `<span class="history-words">Missing links: ${preview}</span>` : ''}
+      <span class="history-pct">${t('history_pct_coverage', { pct: h.avgPct })}</span>
+      <span class="history-missing">${t('history_high_cov', { count: h.highCoverageCount })}</span>
+      ${preview ? `<span class="history-words">${t('history_missing_links', { list: preview })}</span>` : ''}
     </div>`;
   }).join('');
 }
@@ -382,7 +396,7 @@ function renderAnalytics(history) {
 // ══ VOCABULARY TAB ════════════════════════════════════════════════════════════
 function renderVocab(rows, colNames) {
   const badge = document.getElementById('vocab-count-badge');
-  badge.textContent = rows.length + ' words';
+  badge.textContent = t('words_count', { count: rows.length });
 
   const thead = document.getElementById('vocab-thead');
   const tbody = document.getElementById('vocab-tbody');
@@ -429,7 +443,7 @@ function editVocabRow(idx) {
     `<td><input class="edit-input" data-col="${c}" value="${(row[c] || '').replace(/"/g, '&quot;')}" style="width:100%"></td>`
   ).join('') +
   `<td class="td-actions">
-    <button class="btn-save-row" data-idx="${idx}">Save</button>
+    <button class="btn-save-row" data-idx="${idx}">${t('btn_save')}</button>
     <button class="btn-cancel-row" data-idx="${idx}">✕</button>
   </td>`;
 
@@ -485,10 +499,10 @@ let diffResolve = null;
 
 function showDiffModal(diff) {
   modalDiffBody.innerHTML = `
-    <strong style="color:#437a22">${diff.newWords.length} added</strong>&nbsp;
-    <strong style="color:#da7101">${diff.updated.length} modified</strong>&nbsp;
-    <strong style="color:#7a7974">${diff.unchanged.length} unchanged</strong>&nbsp;
-    <strong style="color:#a12c7b">${diff.removed.length} removed</strong>
+    <strong style="color:#437a22">${t('diff_added', { count: diff.newWords.length })}</strong>&nbsp;
+    <strong style="color:#da7101">${t('diff_modified', { count: diff.updated.length })}</strong>&nbsp;
+    <strong style="color:#7a7974">${t('diff_unchanged', { count: diff.unchanged.length })}</strong>&nbsp;
+    <strong style="color:#a12c7b">${t('diff_removed', { count: diff.removed.length })}</strong>
   `;
   modalDiff.style.display = 'flex';
   return new Promise(res => { diffResolve = res; });
@@ -554,13 +568,13 @@ document.getElementById('dash-file-input').addEventListener('change', async e =>
 function renderBlacklist(hosts) {
   const ul = document.getElementById('blacklist-ul');
   if (!hosts.length) {
-    ul.innerHTML = '<p class="empty-msg">No muted sites.</p>';
+    ul.innerHTML = `<p class="empty-msg">${t('no_muted_sites')}</p>`;
     return;
   }
   ul.innerHTML = hosts.map(h =>
     `<li class="blacklist-item">
       <span class="blacklist-hostname">${h}</span>
-      <button class="btn-whitelist" data-host="${h}">re-enable</button>
+      <button class="btn-whitelist" data-host="${h}">${t('btn_reenable')}</button>
     </li>`
   ).join('');
   ul.querySelectorAll('.btn-whitelist').forEach(btn => {

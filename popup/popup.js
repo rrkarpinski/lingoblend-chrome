@@ -1,10 +1,13 @@
 /**
- * LingoBlend popup script — v0.7.0
+ * LingoBlend popup script — v0.8.0
  * Vocabulary import/management removed entirely — now dashboard-only.
  * Popup shows a "Create Profile" CTA when no profiles exist, redirecting
  * to dashboard.html#profiles&new=1. Otherwise shows profile switcher,
  * blend-rate slider, refresh button, stats, and site mute control.
+ * Added: i18n support via ../i18n.js — all user-facing strings now use t().
  */
+
+import { initI18n, t, applyStaticI18n } from '../i18n.js';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const chkEnabled = document.getElementById('chk-enabled');
@@ -101,7 +104,7 @@ btnCreateFirstProfile.addEventListener('click', () => {
 
 // ── Refresh hint / explicit refresh ──────────────────────────────────────────
 function showRefreshHint() {
-  pageStats.textContent = 'Settings saved — click refresh to apply';
+  pageStats.textContent = t('settings_saved_hint');
   pageStats.className = 'page-stats muted';
 }
 
@@ -113,12 +116,18 @@ btnRefresh.addEventListener('click', () => {
 
 // ── Lang mismatch ─────────────────────────────────────────────────────────────
 function showLangMismatchNotice(pageLang, nativeLang) {
-  langMismatchNotice.textContent = `Looks like the page is in ${pageLang.toUpperCase()}, not ${nativeLang.toUpperCase()}`;
+  langMismatchNotice.textContent = t('lang_mismatch', {
+    pageLang: pageLang.toUpperCase(),
+    nativeLang: nativeLang.toUpperCase()
+  });
   langMismatchNotice.hidden = false;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
+  await initI18n();
+  applyStaticI18n();
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   currentTab = tab;
 
@@ -152,7 +161,7 @@ async function init() {
     try {
       currentHostname = new URL(tab.url).hostname;
       renderSiteLine((data.disabledHosts || []).includes(currentHostname));
-    } catch (_) {}
+    } catch (_) { }
   }
 
   if (tab?.id && tab.url && /^https?:\/\//.test(tab.url)) {
@@ -168,13 +177,13 @@ async function init() {
 function queryAndRenderStats(tabId) {
   chrome.tabs.sendMessage(tabId, { type: 'GET_STATS' }, resp => {
     if (chrome.runtime.lastError || !resp) {
-      pageStats.textContent = 'Reload page to activate';
+      pageStats.textContent = t('reload_prompt');
       pageStats.className = 'page-stats muted';
       return;
     }
     pageStats.textContent = resp.count > 0
-      ? `${resp.count} word${resp.count !== 1 ? 's' : ''} blended in`
-      : '0 words blended in';
+      ? t('words_blended', { count: resp.count })
+      : t('words_blended_zero');
     pageStats.className = resp.count > 0 ? 'page-stats success' : 'page-stats muted';
   });
 
@@ -189,8 +198,8 @@ function renderSentenceStats(data) {
   if (!data || data.sentenceCount === 0) return;
   sentStats.hidden = false;
   sentStats.innerHTML = `
-    <div class="stat-item"><span class="stat-num">${data.avgPct}%</span><span class="stat-lbl">Avg sentence coverage</span></div>
-    <div class="stat-item"><span class="stat-num">${data.highCoverageCount}</span><span class="stat-lbl">High-coverage sentences</span></div>
+    <div class="stat-item"><span class="stat-num">${data.avgPct}%</span><span class="stat-lbl">${t('avg_coverage_label')}</span></div>
+    <div class="stat-item"><span class="stat-num">${data.highCoverageCount}</span><span class="stat-lbl">${t('high_coverage_label')}</span></div>
   `;
 }
 
@@ -198,9 +207,9 @@ function renderSentenceStats(data) {
 function renderSiteLine(disabled) {
   if (!currentHostname) { siteLine.textContent = ''; return; }
   if (disabled) {
-    siteLine.innerHTML = `<strong>${currentHostname}</strong> is muted — <span class="site-action whitelist" id="btn-toggle-site">re-enable</span>`;
+    siteLine.innerHTML = `<strong>${currentHostname}</strong> ${t('site_muted_suffix')} <span class="site-action whitelist" id="btn-toggle-site">${t('site_reenable')}</span>`;
   } else {
-    siteLine.innerHTML = `<span class="site-action blacklist" id="btn-toggle-site">Mute ${currentHostname}</span>`;
+    siteLine.innerHTML = `<span class="site-action blacklist" id="btn-toggle-site">${t('site_mute_action', { host: currentHostname })}</span>`;
   }
   document.getElementById('btn-toggle-site')?.addEventListener('click', toggleSite);
 }

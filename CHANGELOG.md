@@ -26,6 +26,13 @@ b. that's/oh should count as function and not be in vocab
 
 -!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
 
+## [0.8.0] - 2026-07-04
+### Added
+- UI localization (EN/PL). New `localization/en.json` and `localization/pl.json` files plus shared `i18n.js` helper with `t(key, vars)` lookup and `{placeholder}` interpolation.
+- Language auto-detected from browser locale on first run, manually switchable via a language selector in the dashboard header. Preference persists in `chrome.storage.local` as `uiLang`.
+### Note
+- Pluralization is intentionally simplified — count-based strings use a single fixed template per language (e.g. always "{count} words"/"{count} słów") rather than grammatically correct plural forms, to keep the initial implementation scope manageable.
+
 ## [0.7.3] - 2026-07-04
 ### Fixed
 - Mobile bottom navbar (dashboard, <767px) now spans full viewport width instead of shrinking to content (`left: 0; right: 0; width: 100%` on `.tabs`).

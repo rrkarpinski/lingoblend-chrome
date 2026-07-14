@@ -9,23 +9,27 @@
 <body>
   <header>
   <img src="../icons/icon48.png" class="logo" alt="LingoBlend">
-    <span class="app-name">LingoBlend</span>
+    <span class="app-name" data-i18n="app_name">LingoBlend</span>
     <span class="version" id="version-label"></span>
     <span class="header-profile-name" id="header-profile-name"></span>
+    <select class="edit-input" id="lang-select" style="width:auto">
+      <option value="en">en</option>
+      <option value="pl">pl</option>
+    </select>
   </header>
 
   <nav class="tabs">
-    <button class="tab" data-tab="profiles">Profiles</button>
-    <button class="tab active" data-tab="analytics">Analytics</button>
-    <button class="tab" data-tab="vocab">Vocabulary</button>
-    <button class="tab" data-tab="blacklist">Muted sites</button>
+    <button class="tab" data-tab="profiles" data-i18n="tab_profiles">Profiles</button>
+    <button class="tab active" data-tab="analytics" data-i18n="tab_analytics">Analytics</button>
+    <button class="tab" data-tab="vocab" data-i18n="tab_vocab">Vocabulary</button>
+    <button class="tab" data-tab="blacklist" data-i18n="tab_blacklist">Muted sites</button>
   </nav>
 
   <!-- ═══ PROFILES TAB (new) ═══════════════════════════════════════════════ -->
   <section class="tab-content" id="tab-profiles">
     <div class="profiles-toolbar">
-      <button class="btn-export" id="btn-new-profile">New profile +</button>
-      <button class="btn-export" id="btn-import-profile">Import profile ←</button>
+      <button class="btn-export" id="btn-new-profile" data-i18n="btn_new_profile">New profile +</button>
+      <button class="btn-export" id="btn-import-profile" data-i18n="btn_import_profile">Import profile ←</button>
       <input type="file" id="profile-file-input" accept=".json" hidden>
     </div>
     <div class="profile-cards" id="profile-cards"></div>
@@ -35,23 +39,23 @@
   <section class="tab-content active" id="tab-analytics">
     <div class="summary-cards" id="summary-cards"></div>
     <p class="section-title">
-      Missing links <span class="hint">— the most contextually useful words to add to your vocab next</span>
+      <span data-i18n="missing_links_title">Missing links</span> <span class="hint" data-i18n="missing_links_hint">— the most contextually useful words to add to your vocab next</span>
     </p>
     <div class="missing-cloud" id="missing-cloud"></div>
-    <p class="section-title">Session history</p>
+    <p class="section-title" data-i18n="session_history_title">Session history</p>
     <div class="history-list" id="history-list"></div>
   </section>
 
   <!-- ═══ VOCABULARY TAB (unchanged) ══════════════════════════════════════ -->
   <section class="tab-content" id="tab-vocab">
     <div class="toolbar">
-      <input class="search-input" id="vocab-search" type="text" placeholder="Search…">
+      <input class="search-input" id="vocab-search" type="text" placeholder="Search…" data-i18n-placeholder="search_placeholder">
       <span class="count-badge" id="vocab-count-badge"></span>
-      <button class="btn-import-dash" id="btn-import-dash">Import</button>
-      <button class="btn-export" id="btn-export-dash">Export</button>
+      <button class="btn-import-dash" id="btn-import-dash" data-i18n="btn_import">Import</button>
+      <button class="btn-export" id="btn-export-dash" data-i18n="btn_export">Export</button>
       <input type="file" id="dash-file-input" accept=".txt,.tsv,.csv" hidden>
     </div>
-    <p class="edit-note">Click ✎ to edit a row · ✕ to delete</p>
+    <p class="edit-note" data-i18n="edit_note">Click ✎ to edit a row · ✕ to delete</p>
     <div class="data-table-wrap">
       <table class="data-table" id="vocab-table">
         <thead id="vocab-thead"></thead>
@@ -68,13 +72,13 @@
   <!-- ── Diff modal (unchanged) ────────────────────────────────────────── -->
   <div class="modal-overlay" id="modal-diff" style="display:none">
     <div class="modal-box">
-      <div class="modal-title">Import preview</div>
+      <div class="modal-title" data-i18n="modal_import_preview">Import preview</div>
       <div class="modal-body" id="modal-diff-body"></div>
       <div class="modal-actions modal-actions--col">
-        <button class="modal-confirm" id="diff-add-new">Add new only</button>
-        <button class="modal-confirm" id="diff-add-update">Add + update</button>
-        <button class="modal-warn" id="diff-replace">Full replace</button>
-        <button class="modal-cancel" id="diff-cancel">Cancel</button>
+        <button class="modal-confirm" id="diff-add-new" data-i18n="diff_add_new">Add new only</button>
+        <button class="modal-confirm" id="diff-add-update" data-i18n="diff_add_update">Add + update</button>
+        <button class="modal-warn" id="diff-replace" data-i18n="diff_replace">Full replace</button>
+        <button class="modal-cancel" id="diff-cancel" data-i18n="diff_cancel">Cancel</button>
       </div>
     </div>
   </div>
@@ -82,18 +86,18 @@
   <!-- New profile modal -->
   <div class="modal-overlay" id="modal-new-profile" style="display:none">
     <div class="modal-box">
-      <div class="modal-title">New profile</div>
+      <div class="modal-title" data-i18n="modal_new_profile_title">New profile</div>
       <div class="modal-body">
         <div class="field">
-          <label for="new-profile-name">Name</label>
+          <label for="new-profile-name" data-i18n="field_name">Name</label>
           <input class="edit-input" id="new-profile-name" placeholder="e.g. Rafał">
         </div>
         <div class="field">
-          <label for="new-profile-email">Email</label>
+          <label for="new-profile-email" data-i18n="field_email">Email</label>
           <input class="edit-input" id="new-profile-email" type="email" placeholder="e.g. rafal@example.com">
         </div>
         <div class="field">
-          <label for="new-profile-native">Native language</label>
+          <label for="new-profile-native" data-i18n="field_native_lang">Native language</label>
           <select class="edit-input" id="new-profile-native">
             <option value="pl">PL</option>
             <!-- <option value="en">EN</option>
@@ -101,7 +105,7 @@
           </select>
         </div>
         <div class="field">
-          <label for="new-profile-target">Target language</label>
+          <label for="new-profile-target" data-i18n="field_target_lang">Target language</label>
           <select class="edit-input" id="new-profile-target">
             <option value="en">EN</option>
             <!-- <option value="pl">PL</option>
@@ -109,14 +113,14 @@
           </select>
         </div>
         <div class="field">
-          <label for="new-profile-file">Word bank file</label>
+          <label for="new-profile-file" data-i18n="field_word_bank">Word bank file</label>
           <input class="edit-input" id="new-profile-file" type="file" accept=".txt,.tsv,.csv">
           <span class="hint" id="new-profile-file-hint"></span>
         </div>
       </div>
       <div class="modal-actions">
-        <button class="modal-confirm" id="btn-create-profile-confirm">Create</button>
-        <button class="modal-cancel" id="btn-create-profile-cancel">Cancel</button>
+        <button class="modal-confirm" id="btn-create-profile-confirm" data-i18n="btn_create">Create</button>
+        <button class="modal-cancel" id="btn-create-profile-cancel" data-i18n="btn_cancel">Cancel</button>
       </div>
     </div>
   </div>

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LingoBlend",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "description": "Substitutes native-language words with target-language words as you browse.",
   "permissions": [
     "storage",
@@ -19,7 +19,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["function-wordlists.js", "aho-corasick.js", "content.js"],
+      "js": ["aho-corasick.js", "content.js"],
       "run_at": "document_idle"
     }
   ],
@@ -28,7 +28,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["dashboard/dashboard.html"],
+      "resources": ["dashboard/dashboard.html", "localization/*.json"],
       "matches": ["<all_urls>"]
     }
   ]
