@@ -504,13 +504,12 @@ async function handleImport(text, fileName) {
   const firstLine = lines.find(l => l.trim());
   let delim = delimForFile(fileName);
   if (!delim && firstLine) delim = detectDelimiter(firstLine);
-  if (!delim) { alert('Could not detect delimiter. File must be tab- or semicolon-separated.'); return; }
+  if (!delim) { alert(t('delimiter_error')); return; }
 
   const { rows: incoming, colNames } = parseVocabFull(text, delim);
-  if (!incoming.length) { alert('No valid rows found in file.'); return; }
+  if (!incoming.length) { alert(t('no_valid_rows')); return; }
 
-  const stored = await chrome.storage.local.get(['vocabText', 'vocabColNames', 'profiles', 'activeProfileId']);
-  const existingText = stored.vocabText || '';
+  const existingText = globalProfiles[globalActiveId]?.vocabText || '';
   const existingDelim = existingText.includes('\t') ? '\t' : ';';
   const { rows: existing } = existingText ? parseVocabFull(existingText, existingDelim) : { rows: [] };
 
@@ -523,20 +522,23 @@ async function handleImport(text, fileName) {
   const name = fileName.replace(/\.[^.]+$/, '');
   const count = merged.length;
 
-  const profiles = stored.profiles || {};
-  const activeId = stored.activeProfileId;
-  if (activeId && profiles[activeId]) {
-    profiles[activeId].vocabText = newText;
-    profiles[activeId].vocabName = name;
-    profiles[activeId].vocabCount = count;
-    profiles[activeId].vocabDelimiter = delim;
+  if (globalActiveId && globalProfiles[globalActiveId]) {
+    globalProfiles[globalActiveId].vocabText = newText;
+    globalProfiles[globalActiveId].vocabName = name;
+    globalProfiles[globalActiveId].vocabCount = count;
+    globalProfiles[globalActiveId].vocabDelimiter = delim;
+    globalProfiles[globalActiveId].vocabColNames = colNames;
   }
 
   globalRows = merged;
   globalColNames = colNames;
   globalVocabName = name;
 
-  await chrome.storage.local.set({ vocabText: newText, vocabName: name, vocabCount: count, vocabColNames: colNames, vocabDelimiter: delim, profiles });
+  await chrome.storage.local.set({
+    vocabText: newText, vocabName: name, vocabCount: count,
+    vocabColNames: colNames, vocabDelimiter: delim,
+    profiles: globalProfiles
+  });
   renderVocab(globalRows, globalColNames);
 }
 
