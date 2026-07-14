@@ -44,10 +44,9 @@ fetch(chrome.runtime.getURL('manifest.json'))
 
 // ── UUID helper ───────────────────────────────────────────────────────────────
 function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-  });
+  return [...crypto.getRandomValues(new Uint8Array(8))]
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -245,20 +244,18 @@ function exportProfile(id) {
 // ── New profile modal ────────────────────────────────────────────────────────
 document.getElementById('btn-new-profile').addEventListener('click', () => {
   document.getElementById('new-profile-name').value = '';
-  document.getElementById('new-profile-email').value = '';
   document.getElementById('new-profile-file').value = '';
   document.getElementById('modal-new-profile').style.display = 'flex';
 });
 
 document.getElementById('btn-create-profile-confirm').addEventListener('click', async () => {
   const name = document.getElementById('new-profile-name').value.trim();
-  const email = document.getElementById('new-profile-email').value.trim();
   const nativeLang = document.getElementById('new-profile-native').value;
   const targetLang = document.getElementById('new-profile-target').value;
   const fileInput = document.getElementById('new-profile-file');
   const file = fileInput.files[0];
 
-  if (!name || !email || !file) {
+  if (!name || !file) {
     alert(t('require_fields_alert'));
     return;
   }
@@ -278,7 +275,7 @@ document.getElementById('btn-create-profile-confirm').addEventListener('click', 
   const now = Date.now();
 
   globalProfiles[id] = {
-    id, name, email,
+    id, name,
     nativeLanguage: nativeLang, targetLanguage: targetLang,
     vocabText, vocabName: file.name.replace(/\.[^.]+$/, ''), vocabCount: rows.length,
     vocabDelimiter: delim, vocabColNames: colNames,

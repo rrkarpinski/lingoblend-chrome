@@ -26,6 +26,14 @@ b. that's/oh should count as function and not be in vocab
 
 -!!! maybe handle python script preprocessing with android/iOS app! doesnt have to be in extension!
 
+## [0.8.1] - 2026-07-14
+### Changed
+- Removed unused `function-wordlists.js` (EN/PL function-word sets) — dead code left over from an earlier filtering approach; no longer referenced by `content.js` or any other file. Dropped from `manifest.json` content scripts and from `<script>` tags in `popup.html`/`dashboard.html`.
+- Standardized on the shorter `generateUUID()` (16-char hex from `crypto.getRandomValues`) across `dashboard.js` and `background.js`, replacing the longer dashed UUID-v4-style format previously used for new profile IDs.
+- Removed email field from the new-profile creation flow. Profiles are now created with name, native/target language, and word bank file only; the generated UUID serves as the sole identifier. `field_email` key removed from `en.json`/`pl.json`; `require_fields_alert` copy updated to drop the email mention.
+### Fixed
+- Corrected a malformed `en.json` (trailing comma) that caused `SyntaxError: Unexpected token` on `i18n.js` dict load, breaking both popup and dashboard on startup.
+
 ## [0.8.0] - 2026-07-04
 ### Added
 - UI localization (EN/PL). New `localization/en.json` and `localization/pl.json` files plus shared `i18n.js` helper with `t(key, vars)` lookup and `{placeholder}` interpolation.
