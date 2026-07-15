@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LingoBlend",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Substitutes native-language words with target-language words as you browse.",
   "permissions": [
     "storage",
@@ -20,6 +20,11 @@
     {
       "matches": ["<all_urls>"],
       "js": ["aho-corasick.js", "content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.duolingo.com/practice-hub/words*"],
+      "js": ["duolingo-downloader.js"],
       "run_at": "document_idle"
     }
   ],

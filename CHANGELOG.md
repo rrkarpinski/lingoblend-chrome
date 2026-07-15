@@ -4,6 +4,11 @@
 - add option to download list form duolingo to update
 - figure out ES, DE, RU, JP
 
+## [0.8.3] - 2026-07-15
+### Added
+- Standalone Duolingo vocab downloader (`duolingo-downloader.js`), loaded as an isolated content script matching `https://www.duolingo.com/practice-hub/words*` only. Waits for the word-list DOM to appear, then prompts via `confirm()` to load all words (auto-expanding nested lists by repeatedly clicking trailing `li[role="button"]` elements), then prompts a second time with the loaded word count to confirm CSV export. Detected pairs (`li` containing `div > h3` + `div > p`) are saved as `duolingo_vocabulary_<timestamp>.csv` (semicolon-separated, `target;duolingo_translations` header, quoted where needed).
+- Runs fully independent of `content.js`/`aho-corasick.js` — no shared state, no imports, own namespace guard (`window.__duolingoDownloader`) to prevent double-injection on SPA navigation. No new permissions required; download uses an in-page Blob + anchor click rather than the `downloads` API.
+
 ## [0.8.2] - 2026-07-14
 ### Changed
 - Tooltip color/order swapped: native word now shown unbracketed in the lighter shade, Duolingo-style translations now bracketed and shown in a mid-tone (darker than the native word, but lighter than the previous scheme).
