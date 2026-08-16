@@ -2,6 +2,9 @@
  * Aho-Corasick — LingoBlend (Chrome MV3)
  * v0.6.0: addEntry() replaces addPattern() — registers all forms (or translations
  * as fallback) as patterns, all pointing to the same entry object.
+ * v0.8.3: restored translations fallback (removed in v0.6.5) — server-side
+ * enrichment that populates `forms` is now optional, not guaranteed, so a
+ * 2-column (target, translations) vocab must remain fully functional.
  * charBefore / charAfter passed in from caller for cross-node boundary awareness.
  */
 class AhoCorasick {
@@ -15,13 +18,13 @@ class AhoCorasick {
 
   /**
    * Register all patterns for one vocab entry.
-   * v0.6.5: patterns come exclusively from entry.forms — no fallback to
-   * translations. Rows with empty forms register no patterns (by design,
-   * since forms are guaranteed clean via external preprocessing).
+   * Patterns: entry.forms if non-empty, else entry.translations (string[]).
    * All patterns point back to the same entry object.
    */
   addEntry(entry) {
-    const patterns = entry.forms || [];
+    const patterns = (entry.forms && entry.forms.length > 0)
+      ? entry.forms
+      : entry.translations;
     for (const pattern of patterns) {
       const p = pattern.toLowerCase();
       if (!p) continue;

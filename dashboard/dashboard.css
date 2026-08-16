@@ -366,3 +366,79 @@ header {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+
+/* ── Enrichment status bar ── */
+.enrich-status:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: 1px solid #dcd9d5;
+}
+.enrich-status--pending {
+  background: #e0eff0;
+  color: #0f3638;
+  border-color: #cedcd8;
+}
+.enrich-status--done {
+  background: #eef5e6;
+  color: #2e5c10;
+  border-color: #cfe3bb;
+}
+.enrich-status--error {
+  background: #f5e8ea;
+  color: #7d2534;
+  border-color: #eccdd2;
+}
+
+.enrich-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  animation: enrich-spin 0.8s linear infinite;
+}
+@keyframes enrich-spin {
+  to { transform: rotate(360deg); }
+}
+
+.btn-enrich-action {
+  border: none;
+  background: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  padding: 0;
+}
+.btn-enrich-action:hover { opacity: 0.8; }
+
+/* ── Enrichment diff modal ── */
+.enrich-stat-row {
+  padding: 6px 0;
+  font-size: 13px;
+  color: #28251d;
+  border-bottom: 1px solid #f3f0ec;
+}
+.enrich-stat-row:last-child { border-bottom: none; }
+
+/* ── Disabled state for toolbar buttons (missing previously) ── */
+.btn-export:disabled,
+.btn-import-dash:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: none;
+}
+
+.modal-actions--center {
+  justify-content: center;
+}

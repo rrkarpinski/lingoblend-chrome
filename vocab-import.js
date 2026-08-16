@@ -21,12 +21,7 @@ export function detectDelimiter(line) {
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 
-const KNOWN_HEADER_TOKENS = new Set([
-  'target','word','native','translation','translations', 'duolingo_translations', 'inflections', 'word_type', 'wordtype',
-  'forms','source','notes','comment','tags'
-]);
-
-const KNOWN_COLS = ['target', 'translations', 'forms', 'source'];
+const FALLBACK_HEADERS = ['target', 'translations', 'forms', 'source'];
 
 export function parseVocabFull(text, delim) {
   const lines = text.split(/\r?\n/);
@@ -40,12 +35,12 @@ export function parseVocabFull(text, delim) {
 
     if (colNames === null) {
       const firstToken = cells[0].trim().toLowerCase();
-      if (KNOWN_HEADER_TOKENS.has(firstToken)) {
+      if (window.LB_HEADER_TOKENS.has(firstToken)) {
         colNames = cells.map(c => c.trim().toLowerCase());
         continue;
       } else {
         const n = Math.max(cells.length, 2);
-        colNames = Array.from({ length: n }, (_, i) => KNOWN_COLS[i] || `col${i}`);
+        colNames = Array.from({ length: n }, (_, i) => FALLBACK_HEADERS[i] || `col${i}`);
       }
     }
 
@@ -57,7 +52,7 @@ export function parseVocabFull(text, delim) {
     rows.push(obj);
   }
 
-  return { rows, colNames: colNames || KNOWN_COLS.slice(0, 2) };
+  return { rows, colNames: colNames || FALLBACK_HEADERS.slice(0, 2) };
 }
 
 // ── Diff ──────────────────────────────────────────────────────────────────────

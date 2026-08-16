@@ -1,5 +1,14 @@
 import { initI18n, setLang, getLang, t, applyStaticI18n } from '../i18n.js';
 import { delimForFile, detectDelimiter, parseVocabFull, buildDiff, applyMerge, vocabRowsToText } from '../vocab-import.js';
+import { uploadVocab, getJobStatus, getJobResult, jobCreatedAt } from '../enrichment-api.js';
+
+
+// ── Enrichment API config ─────────────────────────────────────────────────────
+// Single place to change when moving from local dev to the eventual Render URL.
+// Must also match a host_permissions entry in manifest.json.
+const ENRICHMENT_API_BASE_URL = 'http://localhost:8000';
+const ENRICH_POLL_INTERVAL_MS = 4000;
+
 
 // ── i18n boot ─────────────────────────────────────────────────────────────────
 await initI18n();
@@ -14,6 +23,7 @@ document.getElementById('lang-select').addEventListener('change', async e => {
   renderBlacklist(globalProfiles[globalActiveId]?.disabledHosts || []);
 });
 
+
 // ── Tab switching ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -21,26 +31,40 @@ document.querySelectorAll('.tab').forEach(btn => {
     document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    history.replaceState(null, '', '#' + btn.dataset.tab);
+    if (btn.dataset.tab === 'vocab') {
+      maybeStartEnrichPolling();
+    } else {
+      stopEnrichPolling();
+    }
   });
 });
 
+
+const VALID_TABS = ['profiles', 'analytics', 'vocab', 'blacklist'];
 const hashParts = (location.hash || '').replace('#', '').split('&');
-if (hashParts.includes('profiles')) {
+const initialTab = hashParts.find(h => VALID_TABS.includes(h));
+if (initialTab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
-  document.querySelector('[data-tab="profiles"]').classList.add('active');
-  document.getElementById('tab-profiles').classList.add('active');
+  document.querySelector(`[data-tab="${initialTab}"]`).classList.add('active');
+  document.getElementById('tab-' + initialTab).classList.add('active');
+  // Deliberately nothing else here — no stopEnrichPolling(), no
+  // maybeStartEnrichPolling(). Both reference state that doesn't exist yet
+  // at this point in the script; the storage-load callback below is the
+  // only safe place to kick off polling.
 }
 if (hashParts.includes('new=1')) {
   document.getElementById('new-profile-name').value = '';
-  document.getElementById('new-profile-email').value = '';
   document.getElementById('new-profile-file').value = '';
   document.getElementById('modal-new-profile').style.display = 'flex';
 }
 
+
 fetch(chrome.runtime.getURL('manifest.json'))
   .then(r => r.json())
   .then(m => { document.getElementById('version-label').textContent = 'v' + m.version; });
+
 
 // ── UUID helper ───────────────────────────────────────────────────────────────
 function generateUUID() {
@@ -49,6 +73,7 @@ function generateUUID() {
     .join("");
 }
 
+
 // ── State ─────────────────────────────────────────────────────────────────────
 let globalRows = [];
 let globalColNames = ['target', 'translations'];
@@ -56,19 +81,35 @@ let globalVocabName = 'lingoblend-vocab';
 let globalProfiles = {};
 let globalActiveId = '';
 
+// Enrichment state — in-memory cache of the LIVE status while a job is
+// actively being tracked (profile.pendingEnrichJobId is set). Terminal
+// outcomes (anything but 'pending') also get mirrored onto the profile
+// object itself (profile.lastEnrichStatus) so they survive a refresh even
+// after pendingEnrichJobId is eventually cleared (e.g. once the result has
+// been fetched — see pullEnrichedVocab). 'pending' updates stay memory-only:
+// an active job is always re-verified fresh from the server on next view
+// anyway, so there's nothing worth persisting for that state.
+let lastEnrichStatusByProfile = {}; // { [profileId]: { kind, phase?, message?, detail?, createdAt? } }
+let uploadingProfileIds = new Set();
+let enrichPollTimer = null;
+
+
 chrome.storage.local.get(['vocabText', 'vocabName', 'vocabColNames', 'disabledHosts',
                           'analyticsHistory', 'profiles', 'activeProfileId'])
   .then(data => {
     globalProfiles = data.profiles || {};
     globalActiveId = data.activeProfileId || '';
 
+
     const activeProfile = globalProfiles[globalActiveId];
     if (activeProfile) {
       document.getElementById('header-profile-name').textContent = activeProfile.name;
     }
 
+
     renderProfiles();
     renderAnalytics(data.analyticsHistory || []);
+
 
     globalVocabName = data.vocabName || 'lingoblend-vocab';
     globalColNames = data.vocabColNames || ['target', 'translations'];
@@ -80,7 +121,9 @@ chrome.storage.local.get(['vocabText', 'vocabName', 'vocabColNames', 'disabledHo
     }
     renderVocab(globalRows, globalColNames);
     renderBlacklist(data.disabledHosts || []);
+    maybeStartEnrichPolling();
   });
+
 
 // ══ PROFILES TAB ══════════════════════════════════════════════════════════════
 async function syncFlatFromProfile(profile) {
@@ -95,12 +138,15 @@ async function syncFlatFromProfile(profile) {
   });
 }
 
+
 const LANG_LABELS = { pl: 'PL', en: 'EN', es: 'ES' };
+
 
 function renderProfiles() {
   const container = document.getElementById('profile-cards');
   container.innerHTML = '';
   const count = Object.keys(globalProfiles).length;
+
 
   for (const id of Object.keys(globalProfiles)) {
     const p = globalProfiles[id];
@@ -108,12 +154,14 @@ function renderProfiles() {
     const card = document.createElement('div');
     card.className = 'profile-card' + (isActive ? ' active' : '');
 
+
     const nL = LANG_LABELS[p.nativeLanguage] || p.nativeLanguage.toUpperCase();
     const tL = LANG_LABELS[p.targetLanguage] || p.targetLanguage.toUpperCase();
     const wordCount = p.vocabCount || 0;
     const lastUsed = p.lastUsedAt
       ? new Date(p.lastUsedAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
       : '—';
+
 
     card.innerHTML = `
       <div class="profile-card-info">
@@ -136,6 +184,7 @@ function renderProfiles() {
     container.appendChild(card);
   }
 
+
   container.querySelectorAll('.btn-set-active').forEach(btn => {
     btn.addEventListener('click', () => setActiveProfile(btn.dataset.id));
   });
@@ -146,11 +195,13 @@ function renderProfiles() {
     btn.addEventListener('click', () => exportProfile(btn.dataset.id));
   });
 
+
   container.querySelectorAll('.btn-edit-name').forEach(btn => {
     const id = btn.dataset.id;
     const span  = document.getElementById(`pname-${id}`);
     const input = document.getElementById(`pname-input-${id}`);
     let committing = false;
+
 
     btn.addEventListener('click', () => {
       span.hidden = true;
@@ -158,6 +209,7 @@ function renderProfiles() {
       input.focus();
       input.select();
     });
+
 
     async function commitRename() {
       if (committing) return;
@@ -175,11 +227,13 @@ function renderProfiles() {
       committing = false;
     }
 
+
     function cancelRename() {
       input.value = span.textContent;
       span.hidden = false;
       input.hidden = true;
     }
+
 
     input.addEventListener('blur', commitRename);
     input.addEventListener('keydown', e => {
@@ -189,6 +243,7 @@ function renderProfiles() {
   });
 }
 
+
 async function setActiveProfile(id) {
   const profile = globalProfiles[id];
   if (!profile) return;
@@ -196,11 +251,14 @@ async function setActiveProfile(id) {
   globalProfiles[id] = profile;
   globalActiveId = id;
 
+
   await chrome.storage.local.set({ activeProfileId: id, profiles: globalProfiles });
   await syncFlatFromProfile(profile);
 
+
   document.getElementById('header-profile-name').textContent = profile.name;
   renderProfiles();
+
 
   const delim = (profile.vocabText || '').includes('\t') ? '\t' : ';';
   const parsed = profile.vocabText
@@ -212,11 +270,16 @@ async function setActiveProfile(id) {
   renderVocab(globalRows, globalColNames);
   renderAnalytics(profile.analyticsHistory || []);
   renderBlacklist(profile.disabledHosts || []);
+
+  stopEnrichPolling();
+  maybeStartEnrichPolling();
 }
+
 
 async function deleteProfile(id) {
   if (Object.keys(globalProfiles).length <= 1) return;
   delete globalProfiles[id];
+  delete lastEnrichStatusByProfile[id];
   if (id === globalActiveId) {
     const firstId = Object.keys(globalProfiles)[0];
     globalActiveId = firstId;
@@ -229,10 +292,15 @@ async function deleteProfile(id) {
   renderProfiles();
 }
 
+
 function exportProfile(id) {
   const profile = globalProfiles[id];
   if (!profile) return;
-  const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
+  // Deliberately strip credentials and job state — never let a shared/exported
+  // profile leak the owner's API key, and a job id/result/status cached under
+  // that key would be meaningless (orphaned) in another profile's hands anyway.
+  const { apiKey, pendingEnrichJobId, pendingEnrichResult, lastEnrichStatus, ...exportable } = profile;
+  const blob = new Blob([JSON.stringify(exportable, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -241,12 +309,14 @@ function exportProfile(id) {
   URL.revokeObjectURL(url);
 }
 
+
 // ── New profile modal ────────────────────────────────────────────────────────
 document.getElementById('btn-new-profile').addEventListener('click', () => {
   document.getElementById('new-profile-name').value = '';
   document.getElementById('new-profile-file').value = '';
   document.getElementById('modal-new-profile').style.display = 'flex';
 });
+
 
 document.getElementById('btn-create-profile-confirm').addEventListener('click', async () => {
   const name = document.getElementById('new-profile-name').value.trim();
@@ -255,10 +325,12 @@ document.getElementById('btn-create-profile-confirm').addEventListener('click', 
   const fileInput = document.getElementById('new-profile-file');
   const file = fileInput.files[0];
 
+
   if (!name || !file) {
     alert(t('require_fields_alert'));
     return;
   }
+
 
   const text = await file.text();
   const lines = text.split(/\r?\n/);
@@ -267,12 +339,15 @@ document.getElementById('btn-create-profile-confirm').addEventListener('click', 
   if (!delim && firstLine) delim = detectDelimiter(firstLine);
   if (!delim) { alert(t('delimiter_error')); return; }
 
+
   const { rows, colNames } = parseVocabFull(text, delim);
   if (!rows.length) { alert(t('no_valid_rows')); return; }
+
 
   const vocabText = vocabRowsToText(rows, colNames, delim);
   const id = generateUUID();
   const now = Date.now();
+
 
   globalProfiles[id] = {
     id, name,
@@ -280,13 +355,16 @@ document.getElementById('btn-create-profile-confirm').addEventListener('click', 
     vocabText, vocabName: file.name.replace(/\.[^.]+$/, ''), vocabCount: rows.length,
     vocabDelimiter: delim, vocabColNames: colNames,
     analyticsHistory: [], disabledHosts: [],
+    apiKey: null, pendingEnrichJobId: null, pendingEnrichResult: null, lastEnrichStatus: null,
     createdAt: now, lastUsedAt: now
   };
   globalActiveId = id;
 
+
   await chrome.storage.local.set({ profiles: globalProfiles, activeProfileId: id });
   await syncFlatFromProfile(globalProfiles[id]);
   document.getElementById('header-profile-name').textContent = name;
+
 
   const parsed = parseVocabFull(vocabText, delim);
   globalRows = parsed.rows;
@@ -296,18 +374,22 @@ document.getElementById('btn-create-profile-confirm').addEventListener('click', 
   renderAnalytics([]);
   renderBlacklist([]);
 
+
   document.getElementById('modal-new-profile').style.display = 'none';
   renderProfiles();
 });
+
 
 document.getElementById('btn-create-profile-cancel').addEventListener('click', () => {
   document.getElementById('modal-new-profile').style.display = 'none';
 });
 
+
 // ── Import profile ────────────────────────────────────────────────────────────
 document.getElementById('btn-import-profile').addEventListener('click', () => {
   document.getElementById('profile-file-input').click();
 });
+
 
 document.getElementById('profile-file-input').addEventListener('change', async e => {
   const file = e.target.files[0];
@@ -324,6 +406,7 @@ document.getElementById('profile-file-input').addEventListener('change', async e
   }
 });
 
+
 // ══ ANALYTICS TAB ════════════════════════════════════════════════════════════
 function renderAnalytics(history) {
   const totalSessions = history.length;
@@ -337,6 +420,7 @@ function renderAnalytics(history) {
       missingFreq[w] = (missingFreq[w] || 0) + 1;
   const sortedMissing = Object.entries(missingFreq).sort((a, b) => b[1] - a[1]).slice(0, 60);
   const maxFreq = sortedMissing[0]?.[1] || 1;
+
 
   document.getElementById('summary-cards').innerHTML = `
     <div class="summary-card">
@@ -360,6 +444,7 @@ function renderAnalytics(history) {
       <span class="card-sub">${t('missing_links_sub')}</span>
     </div>`;
 
+
   const cloud = document.getElementById('missing-cloud');
   if (!sortedMissing.length) {
     cloud.innerHTML = `<span style="color:#bab9b4;font-size:13px">${t('no_data_yet')}</span>`;
@@ -369,6 +454,7 @@ function renderAnalytics(history) {
       return `<span class="${cls}">${w}</span>`;
     }).join('');
   }
+
 
   const list = document.getElementById('history-list');
   if (!history.length) {
@@ -390,20 +476,25 @@ function renderAnalytics(history) {
   }).join('');
 }
 
+
 // ══ VOCABULARY TAB ════════════════════════════════════════════════════════════
 function renderVocab(rows, colNames) {
   const badge = document.getElementById('vocab-count-badge');
   badge.textContent = t('words_count', { count: rows.length });
 
+
   const thead = document.getElementById('vocab-thead');
   const tbody = document.getElementById('vocab-tbody');
 
+
   thead.innerHTML = `<tr>${colNames.map(c => `<th>${c}</th>`).join('')}<th class="td-actions"></th></tr>`;
+
 
   const search = document.getElementById('vocab-search').value.toLowerCase();
   const filtered = search ? rows.filter(r =>
     colNames.some(c => (r[c] || '').toLowerCase().includes(search))
   ) : rows;
+
 
   tbody.innerHTML = '';
   filtered.forEach((row, idx) => {
@@ -419,15 +510,20 @@ function renderVocab(rows, colNames) {
     tbody.appendChild(tr);
   });
 
+
   tbody.querySelectorAll('.btn-edit-row').forEach(btn => {
     btn.addEventListener('click', () => editVocabRow(parseInt(btn.dataset.idx)));
   });
   tbody.querySelectorAll('.btn-del-row').forEach(btn => {
     btn.addEventListener('click', () => deleteVocabRow(parseInt(btn.dataset.idx)));
   });
+
+  renderEnrichStatus();
 }
 
+
 document.getElementById('vocab-search').addEventListener('input', () => renderVocab(globalRows, globalColNames));
+
 
 function editVocabRow(idx) {
   const row = globalRows[idx];
@@ -436,6 +532,7 @@ function editVocabRow(idx) {
   const tr = tbody.querySelector(`[data-idx="${idx}"]`)?.closest('tr');
   if (!tr) return;
 
+
   tr.innerHTML = globalColNames.map(c =>
     `<td><input class="edit-input" data-col="${c}" value="${(row[c] || '').replace(/"/g, '&quot;')}" style="width:100%"></td>`
   ).join('') +
@@ -443,6 +540,7 @@ function editVocabRow(idx) {
     <button class="btn-save-row" data-idx="${idx}">${t('btn_save')}</button>
     <button class="btn-cancel-row" data-idx="${idx}">✕</button>
   </td>`;
+
 
   tr.querySelector('.btn-save-row').addEventListener('click', async () => {
     globalColNames.forEach(c => {
@@ -455,11 +553,13 @@ function editVocabRow(idx) {
   tr.querySelector('.btn-cancel-row').addEventListener('click', () => renderVocab(globalRows, globalColNames));
 }
 
+
 async function deleteVocabRow(idx) {
   globalRows.splice(idx, 1);
   await saveVocabRows();
   renderVocab(globalRows, globalColNames);
 }
+
 
 async function saveVocabRows() {
   const text = vocabRowsToText(globalRows, globalColNames, ';');
@@ -472,6 +572,7 @@ async function saveVocabRows() {
   }
   await chrome.storage.local.set({ vocabText: text, vocabCount: globalRows.length, profiles });
 }
+
 
 // ── Vocab export ──────────────────────────────────────────────────────────────
 document.getElementById('btn-export-dash').addEventListener('click', () => {
@@ -489,10 +590,12 @@ document.getElementById('btn-export-dash').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
+
 // ── Vocab import (shared diff modal state) ──────────────────────────────────
 const modalDiff = document.getElementById('modal-diff');
 const modalDiffBody = document.getElementById('modal-diff-body');
 let diffResolve = null;
+
 
 function showDiffModal(diff) {
   modalDiffBody.innerHTML = `
@@ -505,10 +608,12 @@ function showDiffModal(diff) {
   return new Promise(res => { diffResolve = res; });
 }
 
+
 document.getElementById('diff-add-new').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.('addnew'); diffResolve = null; });
 document.getElementById('diff-add-update').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.('addupdate'); diffResolve = null; });
 document.getElementById('diff-replace').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.('replace'); diffResolve = null; });
 document.getElementById('diff-cancel').addEventListener('click', () => { modalDiff.style.display = 'none'; diffResolve?.(null); diffResolve = null; });
+
 
 async function handleImport(text, fileName) {
   const lines = text.split(/\r?\n/);
@@ -517,21 +622,26 @@ async function handleImport(text, fileName) {
   if (!delim && firstLine) delim = detectDelimiter(firstLine);
   if (!delim) { alert(t('delimiter_error')); return; }
 
+
   const { rows: incoming, colNames } = parseVocabFull(text, delim);
   if (!incoming.length) { alert(t('no_valid_rows')); return; }
+
 
   const existingText = globalProfiles[globalActiveId]?.vocabText || '';
   const existingDelim = existingText.includes('\t') ? '\t' : ';';
   const { rows: existing } = existingText ? parseVocabFull(existingText, existingDelim) : { rows: [] };
 
+
   const diff = buildDiff(incoming, existing);
   const mode = await showDiffModal(diff);
   if (!mode) return;
+
 
   const merged = applyMerge(mode, incoming, existing);
   const newText = vocabRowsToText(merged, colNames, delim);
   const name = fileName.replace(/\.[^.]+$/, '');
   const count = merged.length;
+
 
   if (globalActiveId && globalProfiles[globalActiveId]) {
     globalProfiles[globalActiveId].vocabText = newText;
@@ -541,9 +651,11 @@ async function handleImport(text, fileName) {
     globalProfiles[globalActiveId].vocabColNames = colNames;
   }
 
+
   globalRows = merged;
   globalColNames = colNames;
   globalVocabName = name;
+
 
   await chrome.storage.local.set({
     vocabText: newText, vocabName: name, vocabCount: count,
@@ -553,6 +665,7 @@ async function handleImport(text, fileName) {
   renderVocab(globalRows, globalColNames);
 }
 
+
 document.getElementById('btn-import-dash').addEventListener('click', () => document.getElementById('dash-file-input').click());
 document.getElementById('dash-file-input').addEventListener('change', async e => {
   const file = e.target.files[0];
@@ -560,6 +673,468 @@ document.getElementById('dash-file-input').addEventListener('change', async e =>
   e.target.value = '';
   await handleImport(await file.text(), file.name);
 });
+
+
+// ══ VOCAB ENRICHMENT ═════════════════════════════════════════════════════════
+// Job/result/apiKey/lastEnrichStatus (terminal only) are persisted per-profile.
+// lastEnrichStatusByProfile (live cache, incl. 'pending' updates) and
+// uploadingProfileIds are transient, in-memory only.
+//
+// enrichment-api.js already resolves every call to a { kind, ...extra } object
+// — this file never inspects an HTTP status code. mapApiKindToRenderStatus()
+// is the ONE place that turns an API result's `kind` into a render `kind`.
+
+function getLanguagePair(profile) {
+  // ASSUMPTION: server's "language_pair" is "{targetLanguage}_{nativeLanguage}",
+  // inferred from the handoff's own "en_pl" example matching this profile's
+  // default native=pl/target=en setup. If the server rejects this with a 400,
+  // the returned detail text lists the actually-supported pairs — verify against that.
+  return `${profile.targetLanguage}_${profile.nativeLanguage}`;
+}
+
+
+async function persistProfile(id) {
+  await chrome.storage.local.set({ profiles: globalProfiles });
+}
+
+
+function isVocabTabActive() {
+  return document.getElementById('tab-vocab').classList.contains('active');
+}
+
+
+// Maps an enrichment-api.js result's `kind` into the render-facing status
+// kind + display fields. Only handles the SHARED, no-side-effect outcomes —
+// callers special-case 'ok'/'pending'/'done' and any kind needing a side
+// effect (promptApiKey, resuming polling) themselves.
+function mapApiKindToRenderStatus(apiResult) {
+  switch (apiResult.kind) {
+    case 'unauthorized':
+      return { kind: 'unauthorized' };
+    case 'not_found':
+      return { kind: 'not_found' };
+    case 'network_error':
+      return { kind: 'network_error' };
+    case 'unsupported_pair':
+      return { kind: 'unsupported_pair', detail: apiResult.detail || '' };
+    case 'job_error':
+      return { kind: 'job_error', message: apiResult.message || '' };
+    case 'still_pending':
+      return { kind: 'pending', phase: '' };
+    case 'invalid_request':
+    case 'server_error':
+    case 'unknown_error':
+    default:
+      return { kind: 'request_error', detail: apiResult.detail || '' };
+  }
+}
+
+
+// Updates the live in-memory status, and — for any TERMINAL kind (everything
+// except 'pending') — mirrors it onto the profile object too, so it survives
+// a refresh independent of whether pendingEnrichJobId is still set.
+// createdAt is inherited from the previous entry unless explicitly overridden,
+// so callers don't need to thread it through every single call site.
+function setEnrichStatus(profileId, kind, extra = {}) {
+  const prev = lastEnrichStatusByProfile[profileId];
+  const createdAt = extra.createdAt ?? prev?.createdAt ?? null;
+  const entry = { kind, ...extra, createdAt };
+  lastEnrichStatusByProfile[profileId] = entry;
+
+  if (kind !== 'pending') {
+    const profile = globalProfiles[profileId];
+    if (profile) {
+      profile.lastEnrichStatus = entry;
+      persistProfile(profileId);
+    }
+  }
+
+  if (profileId === globalActiveId) renderEnrichStatus();
+}
+
+
+function stopEnrichPolling() {
+  clearTimeout(enrichPollTimer);
+  enrichPollTimer = null;
+}
+
+
+function maybeStartEnrichPolling() {
+  stopEnrichPolling();
+  renderEnrichStatus();
+  const profile = globalProfiles[globalActiveId];
+  if (!profile || !profile.pendingEnrichJobId) return;
+  if (!isVocabTabActive()) return;
+  const st = lastEnrichStatusByProfile[profile.id];
+  if (st && st.kind !== 'pending') return; // already resolved — no need to keep polling
+  pollEnrichStatus(profile.id, profile.pendingEnrichJobId);
+}
+
+
+function pollEnrichStatus(profileId, jobId) {
+  const profile = globalProfiles[profileId];
+  if (!profile || profile.pendingEnrichJobId !== jobId) return; // superseded/cleared while awaiting
+
+  getJobStatus(ENRICHMENT_API_BASE_URL, profile.apiKey, jobId).then(res => {
+    const stillCurrent = globalProfiles[profileId] === profile && profile.pendingEnrichJobId === jobId;
+    if (!stillCurrent) return;
+
+    // Always resolve a createdAt, even on the very first poll after a fresh
+    // page load (when the in-memory cache is empty) — falls back to parsing
+    // it from the jobId itself so the date never briefly goes blank.
+    const prevCreatedAt = lastEnrichStatusByProfile[profileId]?.createdAt;
+    const createdAt = prevCreatedAt ?? jobCreatedAt(jobId)?.getTime() ?? null;
+
+    if (res.kind === 'pending') {
+      setEnrichStatus(profileId, 'pending', { phase: res.phase || '', createdAt });
+      if (isVocabTabActive() && profileId === globalActiveId) {
+        enrichPollTimer = setTimeout(() => pollEnrichStatus(profileId, jobId), ENRICH_POLL_INTERVAL_MS);
+      }
+      return;
+    }
+
+    if (res.kind === 'done') {
+      setEnrichStatus(profileId, 'done', { createdAt });
+      return;
+    }
+
+    // Every other kind is terminal for this polling loop — no further
+    // scheduling; the user must act (update key) or retry (fresh Enrich click).
+    const { kind, ...extra } = mapApiKindToRenderStatus(res);
+    setEnrichStatus(profileId, kind, { ...extra, createdAt });
+  });
+  // No .catch() needed — getJobStatus never rejects; network failures already
+  // resolve as { kind: 'network_error' }.
+}
+
+
+function renderEnrichStatus() {
+  const bar = document.getElementById('enrich-status');
+  const btn = document.getElementById('btn-enrich-vocab');
+  const profile = globalProfiles[globalActiveId];
+
+  if (!profile) { bar.hidden = true; bar.innerHTML = ''; if (btn) btn.disabled = false; return; }
+
+  if (uploadingProfileIds.has(profile.id)) {
+    bar.hidden = false;
+    bar.className = 'enrich-status enrich-status--pending';
+    bar.innerHTML = `<span class="enrich-spinner"></span> ${t('enrich_status_uploading')}`;
+    btn.disabled = true;
+    return;
+  }
+
+  const jobId = profile.pendingEnrichJobId;
+
+  // While a job is actively tracked, the live in-memory status (refreshed by
+  // polling) is the source of truth — defaults to 'pending' with a date
+  // parsed straight from the jobId the moment a job exists but no poll
+  // response has landed yet (e.g. immediately after upload, or right after
+  // a refresh, before the first status check completes).
+  // Once no job is being tracked (never enriched, or already pulled), fall
+  // back to the persisted last-known outcome on the profile itself — this is
+  // what makes "done, ready to pull" (and a plain failed-attempt message)
+  // survive a refresh with zero server contact.
+  const st = jobId
+    ? (lastEnrichStatusByProfile[profile.id] || { kind: 'pending', createdAt: jobCreatedAt(jobId)?.getTime() ?? null })
+    : profile.lastEnrichStatus;
+
+  if (!st) {
+    bar.hidden = true;
+    bar.innerHTML = '';
+    btn.disabled = false;
+    return;
+  }
+
+  const dateStr = st.createdAt
+    ? new Date(st.createdAt).toLocaleString(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  bar.hidden = false;
+  btn.disabled = (st.kind === 'pending');
+
+  if (st.kind === 'pending') {
+    const phaseSuffix = st.phase ? ` — ${st.phase}` : '';
+    bar.className = 'enrich-status enrich-status--pending';
+    bar.innerHTML = `<span class="enrich-spinner"></span> ${t('enrich_status_pending', { date: dateStr, phase: phaseSuffix })}`;
+  } else if (st.kind === 'done') {
+    bar.className = 'enrich-status enrich-status--done';
+    bar.innerHTML = `${t('enrich_status_done', { date: dateStr })} <button class="btn-enrich-action" id="btn-enrich-pull">${t('btn_pull_enriched')}</button>`;
+    document.getElementById('btn-enrich-pull')?.addEventListener('click', pullEnrichedVocab);
+  } else if (st.kind === 'unauthorized') {
+    bar.className = 'enrich-status enrich-status--error';
+    bar.innerHTML = `${t('enrich_status_unauthorized')} <button class="btn-enrich-action" id="btn-update-api-key">${t('btn_update_api_key')}</button>`;
+    document.getElementById('btn-update-api-key')?.addEventListener('click', () => promptApiKey(profile.id, true));
+  } else if (st.kind === 'not_found') {
+    bar.className = 'enrich-status enrich-status--error';
+    bar.innerHTML = t('enrich_status_not_found');
+  } else if (st.kind === 'unsupported_pair') {
+    bar.className = 'enrich-status enrich-status--error';
+    bar.innerHTML = t('enrich_status_unsupported_pair', { detail: st.detail || '' });
+  } else if (st.kind === 'job_error') {
+    bar.className = 'enrich-status enrich-status--error';
+    bar.innerHTML = t('enrich_status_job_error', { message: st.message || '' });
+  } else if (st.kind === 'request_error') {
+    bar.className = 'enrich-status enrich-status--error';
+    bar.innerHTML = t('enrich_status_request_error', { detail: st.detail || '' });
+  } else if (st.kind === 'network_error') {
+    bar.className = 'enrich-status enrich-status--error';
+    bar.innerHTML = t('enrich_status_network_error');
+  }
+}
+
+
+async function startEnrichJob(profile) {
+  if (!globalRows.length) { alert(t('no_valid_rows')); return; }
+
+  // A fresh click always supersedes whatever came before — clear old job
+  // tracking up front, so a failed retry never leaves stale info lingering
+  // (regardless of whether THIS attempt succeeds or fails).
+  profile.pendingEnrichJobId = null;
+  profile.pendingEnrichResult = null;
+  profile.lastEnrichStatus = null;
+  delete lastEnrichStatusByProfile[profile.id];
+  await persistProfile(profile.id);
+
+  uploadingProfileIds.add(profile.id);
+  renderEnrichStatus();
+
+  const csvText = vocabRowsToText(globalRows, globalColNames, ';');
+  const languagePair = getLanguagePair(profile);
+
+  const res = await uploadVocab(ENRICHMENT_API_BASE_URL, profile.apiKey, csvText, profile.id, profile.name, languagePair);
+  uploadingProfileIds.delete(profile.id);
+
+  if (res.kind === 'ok') {
+    profile.pendingEnrichJobId = res.jobId;
+    profile.pendingEnrichResult = null;
+    await persistProfile(profile.id);
+    const createdAt = jobCreatedAt(res.jobId)?.getTime() ?? Date.now();
+    setEnrichStatus(profile.id, 'pending', { phase: '', createdAt });
+    maybeStartEnrichPolling();
+    return;
+  }
+
+  const { kind, ...extra } = mapApiKindToRenderStatus(res);
+  setEnrichStatus(profile.id, kind, extra);
+  if (kind === 'unauthorized') promptApiKey(profile.id, true);
+}
+
+
+// ── Enrichment confirmation modal ─────────────────────────────────────────────
+const modalEnrichConfirm = document.getElementById('modal-enrich-confirm');
+let enrichConfirmResolve = null;
+
+function showEnrichConfirmModal() {
+  modalEnrichConfirm.style.display = 'flex';
+  return new Promise(res => { enrichConfirmResolve = res; });
+}
+
+document.getElementById('enrich-confirm-ok').addEventListener('click', () => {
+  modalEnrichConfirm.style.display = 'none';
+  enrichConfirmResolve?.(true);
+  enrichConfirmResolve = null;
+});
+document.getElementById('enrich-confirm-cancel').addEventListener('click', () => {
+  modalEnrichConfirm.style.display = 'none';
+  enrichConfirmResolve?.(false);
+  enrichConfirmResolve = null;
+});
+
+
+document.getElementById('btn-enrich-vocab').addEventListener('click', async () => {
+  const profile = globalProfiles[globalActiveId];
+  if (!profile) return;
+  if (!globalRows.length) { alert(t('no_valid_rows')); return; }
+
+  const confirmed = await showEnrichConfirmModal();
+  if (!confirmed) return;
+
+  if (!profile.apiKey) {
+    promptApiKey(profile.id, false);
+    return;
+  }
+  startEnrichJob(profile);
+});
+
+
+// ── API key modal ─────────────────────────────────────────────────────────────
+function promptApiKey(profileId, isUpdate) {
+  const modal = document.getElementById('modal-api-key');
+  const input = document.getElementById('api-key-input');
+  input.value = '';
+  modal.dataset.profileId = profileId;
+  modal.dataset.isUpdate = isUpdate ? '1' : '0';
+  modal.style.display = 'flex';
+  input.focus();
+}
+
+
+document.getElementById('btn-api-key-confirm').addEventListener('click', async () => {
+  const modal = document.getElementById('modal-api-key');
+  const input = document.getElementById('api-key-input');
+  const key = input.value.trim();
+  if (!key) { alert(t('api_key_required')); return; }
+
+  const profileId = modal.dataset.profileId;
+  const isUpdate = modal.dataset.isUpdate === '1';
+  const profile = globalProfiles[profileId];
+  if (!profile) { modal.style.display = 'none'; return; }
+
+  profile.apiKey = key;
+  await persistProfile(profileId);
+  modal.style.display = 'none';
+
+  if (isUpdate) {
+    // The old job/result/status were created under the previous key —
+    // they're orphaned now (the server ties job ownership to the creating key).
+    profile.pendingEnrichJobId = null;
+    profile.pendingEnrichResult = null;
+    profile.lastEnrichStatus = null;
+    delete lastEnrichStatusByProfile[profileId];
+    await persistProfile(profileId);
+    if (profileId === globalActiveId) { stopEnrichPolling(); renderEnrichStatus(); }
+  } else if (profileId === globalActiveId) {
+    await startEnrichJob(profile);
+  }
+});
+
+
+document.getElementById('btn-api-key-cancel').addEventListener('click', () => {
+  document.getElementById('modal-api-key').style.display = 'none';
+});
+
+
+// ── Enrichment diff modal ─────────────────────────────────────────────────────
+const modalEnrichDiff = document.getElementById('modal-enrich-diff');
+const modalEnrichDiffBody = document.getElementById('modal-enrich-diff-body');
+let enrichDiffResolve = null;
+
+
+function tokenCount(str) {
+  return (str || '').split(',').map(s => s.trim()).filter(Boolean).length;
+}
+
+
+function effectiveBank(row) {
+  return (row.forms && row.forms.trim()) ? row.forms : (row.translations || '');
+}
+
+
+function totalBankTokens(rows) {
+  return rows.reduce((sum, r) => sum + tokenCount(effectiveBank(r)), 0);
+}
+
+
+function computeEnrichStats(existing, incoming, diff) {
+  const oldTotal = totalBankTokens(existing);
+  const newTotal = totalBankTokens(incoming);
+  const oldAvg = existing.length ? oldTotal / existing.length : 0;
+  const newAvg = incoming.length ? newTotal / incoming.length : 0;
+  const expansionRate = oldTotal > 0 ? (newTotal / oldTotal) : null;
+  return {
+    expansionRate, oldAvg, newAvg,
+    translationsAdded: newTotal - oldTotal,
+    rowsNew: diff.newWords.length,
+    rowsModified: diff.updated.length,
+    rowsRemoved: diff.removed.length
+  };
+}
+
+
+function showEnrichDiffModal(stats) {
+  const rateStr = stats.expansionRate !== null ? `${stats.expansionRate.toFixed(1)}×` : '—';
+  modalEnrichDiffBody.innerHTML = `
+    <div class="enrich-stat-row">${t('enrich_expansion_rate', { rate: rateStr })}</div>
+    <div class="enrich-stat-row">${t('enrich_avg_translations', { old: stats.oldAvg.toFixed(1), new: stats.newAvg.toFixed(1) })}</div>
+    <div class="enrich-stat-row">${t('enrich_translations_added', { count: stats.translationsAdded })}</div>
+    <div class="enrich-stat-row">${t('enrich_rows_new', { count: stats.rowsNew })}</div>
+    <div class="enrich-stat-row">${t('enrich_rows_modified', { count: stats.rowsModified })}</div>
+    <div class="enrich-stat-row">${t('enrich_rows_removed', { count: stats.rowsRemoved })}</div>
+  `;
+  modalEnrichDiff.style.display = 'flex';
+  return new Promise(res => { enrichDiffResolve = res; });
+}
+
+
+document.getElementById('enrich-diff-overwrite').addEventListener('click', () => {
+  modalEnrichDiff.style.display = 'none';
+  enrichDiffResolve?.(true);
+  enrichDiffResolve = null;
+});
+document.getElementById('enrich-diff-cancel').addEventListener('click', () => {
+  modalEnrichDiff.style.display = 'none';
+  enrichDiffResolve?.(false);
+  enrichDiffResolve = null;
+});
+
+
+async function saveVocabRowsForProfile(profile, rows, colNames, delim) {
+  const text = vocabRowsToText(rows, colNames, delim);
+  profile.vocabText = text;
+  profile.vocabCount = rows.length;
+  profile.vocabColNames = colNames;
+  profile.vocabDelimiter = delim;
+  await chrome.storage.local.set({
+    vocabText: text, vocabCount: rows.length, vocabColNames: colNames, vocabDelimiter: delim,
+    profiles: globalProfiles
+  });
+}
+
+
+async function pullEnrichedVocab() {
+  const profile = globalProfiles[globalActiveId];
+  if (!profile) return;
+  if (!profile.pendingEnrichJobId && !profile.pendingEnrichResult) return;
+
+  let csvText = profile.pendingEnrichResult;
+  if (!csvText) {
+    const res = await getJobResult(ENRICHMENT_API_BASE_URL, profile.apiKey, profile.pendingEnrichJobId);
+
+    if (res.kind !== 'ok') {
+      const { kind, ...extra } = mapApiKindToRenderStatus(res);
+      setEnrichStatus(profile.id, kind, extra);
+      if (kind === 'unauthorized') promptApiKey(profile.id, true);
+      if (kind === 'pending') maybeStartEnrichPolling(); // covers the defensive still_pending case
+      return;
+    }
+
+    csvText = res.csvText;
+    profile.pendingEnrichResult = csvText;
+    // Result is safely cached — cut all further server contact for this job.
+    // The persisted 'done' status (already set by the earlier poll that first
+    // reported it) keeps driving the display via profile.lastEnrichStatus,
+    // completely independent of pendingEnrichJobId from this point on.
+    profile.pendingEnrichJobId = null;
+    stopEnrichPolling();
+    await persistProfile(profile.id);
+  }
+
+  const delim = ';'; // server always returns semicolon-separated per the API contract
+  const { rows: incoming, colNames: incomingCols } = parseVocabFull(csvText, delim);
+  if (!incoming.length) { alert(t('no_valid_rows')); return; }
+
+  // Comparison basis is deliberately the CURRENT in-memory vocab, not the
+  // pre-upload snapshot — the user may have kept editing after clicking
+  // "Enrich vocab", and this diff answers "what changes if I merge now."
+  const existing = globalRows;
+  const diff = buildDiff(incoming, existing);
+  const stats = computeEnrichStats(existing, incoming, diff);
+
+  const proceed = await showEnrichDiffModal(stats);
+  if (!proceed) return; // cancel — cached result + persisted 'done' status remain available to revisit
+
+  globalRows = incoming;
+  globalColNames = incomingCols;
+  await saveVocabRowsForProfile(profile, incoming, incomingCols, delim);
+  renderVocab(globalRows, globalColNames);
+
+  profile.pendingEnrichResult = null;
+  profile.lastEnrichStatus = null;
+  delete lastEnrichStatusByProfile[profile.id];
+  await persistProfile(profile.id);
+  renderEnrichStatus();
+}
+
 
 // ══ MUTED SITES TAB ═══════════════════════════════════════════════════════════
 function renderBlacklist(hosts) {

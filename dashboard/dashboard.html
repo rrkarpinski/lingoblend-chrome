@@ -18,6 +18,7 @@
     </select>
   </header>
 
+
   <nav class="tabs">
     <button class="tab" data-tab="profiles" data-i18n="tab_profiles">Profiles</button>
     <button class="tab active" data-tab="analytics" data-i18n="tab_analytics">Analytics</button>
@@ -25,7 +26,8 @@
     <button class="tab" data-tab="blacklist" data-i18n="tab_blacklist">Muted sites</button>
   </nav>
 
-  <!-- ═══ PROFILES TAB (new) ═══════════════════════════════════════════════ -->
+
+  <!-- ═══ PROFILES TAB ═══════════════════════════════════════════════ -->
   <section class="tab-content" id="tab-profiles">
     <div class="profiles-toolbar">
       <button class="btn-export" id="btn-new-profile" data-i18n="btn_new_profile">New profile +</button>
@@ -34,6 +36,7 @@
     </div>
     <div class="profile-cards" id="profile-cards"></div>
   </section>
+
 
   <!-- ═══ ANALYTICS TAB (unchanged) ═══════════════════════════════════════ -->
   <section class="tab-content active" id="tab-analytics">
@@ -46,16 +49,19 @@
     <div class="history-list" id="history-list"></div>
   </section>
 
-  <!-- ═══ VOCABULARY TAB (unchanged) ══════════════════════════════════════ -->
+
+  <!-- ═══ VOCABULARY TAB ══════════════════════════════════════ -->
   <section class="tab-content" id="tab-vocab">
     <div class="toolbar">
       <input class="search-input" id="vocab-search" type="text" placeholder="Search…" data-i18n-placeholder="search_placeholder">
       <span class="count-badge" id="vocab-count-badge"></span>
       <button class="btn-import-dash" id="btn-import-dash" data-i18n="btn_import">Import</button>
       <button class="btn-export" id="btn-export-dash" data-i18n="btn_export">Export</button>
+      <button class="btn-export" id="btn-enrich-vocab" data-i18n="btn_enrich_vocab">Enrich vocab</button>
       <input type="file" id="dash-file-input" accept=".txt,.tsv,.csv" hidden>
     </div>
     <p class="edit-note" data-i18n="edit_note">Click ✎ to edit a row · ✕ to delete</p>
+    <div class="enrich-status" id="enrich-status" hidden></div>
     <div class="data-table-wrap">
       <table class="data-table" id="vocab-table">
         <thead id="vocab-thead"></thead>
@@ -64,12 +70,14 @@
     </div>
   </section>
 
+
   <!-- ═══ MUTED SITES TAB (unchanged) ════════════════════════════════════ -->
   <section class="tab-content" id="tab-blacklist">
     <ul class="blacklist-ul" id="blacklist-ul"></ul>
   </section>
 
-  <!-- ── Diff modal (unchanged) ────────────────────────────────────────── -->
+
+  <!-- ── Import diff modal (unchanged) ────────────────────────────────────────── -->
   <div class="modal-overlay" id="modal-diff" style="display:none">
     <div class="modal-box">
       <div class="modal-title" data-i18n="modal_import_preview">Import preview</div>
@@ -82,6 +90,51 @@
       </div>
     </div>
   </div>
+
+
+  <!-- ── Enrichment diff modal (new — distinct copy/stats from import diff) ─── -->
+  <div class="modal-overlay" id="modal-enrich-diff" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title" data-i18n="modal_enrich_diff_title">Enrichment results</div>
+      <div class="modal-body" id="modal-enrich-diff-body"></div>
+      <div class="modal-actions">
+        <button class="modal-confirm" id="enrich-diff-overwrite" data-i18n="btn_enrich_overwrite">Overwrite local vocab</button>
+        <button class="modal-cancel" id="enrich-diff-cancel" data-i18n="btn_cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+
+    <!-- ── Enrichment confirmation modal (new) ─────────────────────────────── -->
+  <div class="modal-overlay" id="modal-enrich-confirm" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title" data-i18n="modal_enrich_confirm_title">Enrich vocabulary?</div>
+      <div class="modal-body" data-i18n="modal_enrich_confirm_body">This sends your vocabulary list to the enrichment server, which looks up dictionary-quality translations and generates additional word forms. It can take several minutes and counts against your API key's usage.</div>
+      <div class="modal-actions modal-actions--center">
+        <button class="modal-confirm" id="enrich-confirm-ok" data-i18n="btn_enrich_confirm">Yes, enrich</button>
+        <button class="modal-cancel" id="enrich-confirm-cancel" data-i18n="btn_cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ── API key modal (new) ──────────────────────────────────────────────── -->
+  <div class="modal-overlay" id="modal-api-key" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title" data-i18n="api_key_modal_title">Enter API key</div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="api-key-input" data-i18n="api_key_input_label">API key</label>
+          <input class="edit-input" id="api-key-input" type="password" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-confirm" id="btn-api-key-confirm" data-i18n="btn_save">Save</button>
+        <button class="modal-cancel" id="btn-api-key-cancel" data-i18n="btn_cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
 
   <!-- New profile modal -->
   <div class="modal-overlay" id="modal-new-profile" style="display:none">
@@ -120,8 +173,8 @@
       </div>
     </div>
   </div>
-  
-  <script src="../function-wordlists.js"></script>
+
+  <script src="../vocab-header-tokens.js"></script>
   <script type="module" src="dashboard.js"></script>
 </body>
 </html>

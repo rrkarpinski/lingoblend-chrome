@@ -129,10 +129,6 @@ function makeSeededRandom(seed) {
 // translations — comma-separated string (col2); stored as string[] + rawTransLine
 // forms        — comma-separated string (col3); stored as string[]. Empty → []
 // First line skipped if it looks like a header.
-const HEADER_TOKENS = new Set([
-  'target','word','native','translation','translations',
-  'forms','source','notes','comment','tags'
-]);
 
 function parseVocab(text) {
   const entries = [];
@@ -147,7 +143,7 @@ function parseVocab(text) {
 
     if (firstDataLine) {
       firstDataLine = false;
-      if (HEADER_TOKENS.has(parts[0].trim().toLowerCase())) continue;
+      if (window.LB_HEADER_TOKENS.has(parts[0].trim().toLowerCase())) continue;
     }
 
     const target      = parts[0].trim();

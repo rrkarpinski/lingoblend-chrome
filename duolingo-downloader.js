@@ -84,7 +84,7 @@
   }
 
   function downloadCsv(rows) {
-    const header = 'target;duolingo_translations';
+    const header = 'target;translations';
     const body = rows.map(r => `${csvEscape(r.target)};${csvEscape(r.translation)}`);
     const csv = [header, ...body].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
