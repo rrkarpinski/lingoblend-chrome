@@ -1,14 +1,8 @@
 import { initI18n, setLang, getLang, t, applyStaticI18n } from '../i18n.js';
 import { delimForFile, detectDelimiter, parseVocabFull, buildDiff, applyMerge, vocabRowsToText } from '../vocab-import.js';
-import { uploadVocab, getJobStatus, getJobResult, jobCreatedAt } from '../enrichment-api.js';
-
-
-// ── Enrichment API config ─────────────────────────────────────────────────────
-// Single place to change when moving from local dev to the eventual Render URL.
-// Must also match a host_permissions entry in manifest.json.
-// const ENRICHMENT_API_BASE_URL = 'http://localhost:8000'; // local dev
-const ENRICHMENT_API_BASE_URL = 'https://lingoblend-processing.onrender.com';
-const ENRICH_POLL_INTERVAL_MS = 4000;
+import { initEnrichmentController, getEnrichStatus, isUploading, maybeStartEnrichPolling,
+         stopEnrichPolling, startEnrichJob, fetchEnrichedResult, clearEnrichmentState,
+         resetJobForKeyChange, forgetProfile } from '../enrichment-controller.js';
 
 
 // ── i18n boot ─────────────────────────────────────────────────────────────────
@@ -33,11 +27,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     history.replaceState(null, '', '#' + btn.dataset.tab);
-    if (btn.dataset.tab === 'vocab') {
-      maybeStartEnrichPolling();
-    } else {
-      stopEnrichPolling();
-    }
+    if (btn.dataset.tab === 'vocab') renderEnrichStatus();
   });
 });
 
@@ -82,17 +72,19 @@ let globalVocabName = 'lingoblend-vocab';
 let globalProfiles = {};
 let globalActiveId = '';
 
-// Enrichment state — in-memory cache of the LIVE status while a job is
-// actively being tracked (profile.pendingEnrichJobId is set). Terminal
-// outcomes (anything but 'pending') also get mirrored onto the profile
-// object itself (profile.lastEnrichStatus) so they survive a refresh even
-// after pendingEnrichJobId is eventually cleared (e.g. once the result has
-// been fetched — see pullEnrichedVocab). 'pending' updates stay memory-only:
-// an active job is always re-verified fresh from the server on next view
-// anyway, so there's nothing worth persisting for that state.
-let lastEnrichStatusByProfile = {}; // { [profileId]: { kind, phase?, message?, detail?, createdAt? } }
-let uploadingProfileIds = new Set();
-let enrichPollTimer = null;
+
+initEnrichmentController({
+  getProfiles: () => globalProfiles,
+  getActiveId: () => globalActiveId,
+  onChange: (profileId) => { if (profileId === globalActiveId) renderEnrichStatus(); }
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local' || !changes.profiles) return;
+  globalProfiles = changes.profiles.newValue || {};
+  renderProfiles();
+  renderEnrichStatus();
+});
 
 
 chrome.storage.local.get(['vocabText', 'vocabName', 'vocabColNames', 'disabledHosts',
@@ -124,6 +116,7 @@ chrome.storage.local.get(['vocabText', 'vocabName', 'vocabColNames', 'disabledHo
     renderBlacklist(data.disabledHosts || []);
     maybeStartEnrichPolling();
   });
+
 
 
 // ══ PROFILES TAB ══════════════════════════════════════════════════════════════
@@ -280,7 +273,7 @@ async function setActiveProfile(id) {
 async function deleteProfile(id) {
   if (Object.keys(globalProfiles).length <= 1) return;
   delete globalProfiles[id];
-  delete lastEnrichStatusByProfile[id];
+  forgetProfile(id);
   if (id === globalActiveId) {
     const firstId = Object.keys(globalProfiles)[0];
     globalActiveId = firstId;
@@ -408,6 +401,7 @@ document.getElementById('profile-file-input').addEventListener('change', async e
 });
 
 
+
 // ══ ANALYTICS TAB ════════════════════════════════════════════════════════════
 function renderAnalytics(history) {
   const totalSessions = history.length;
@@ -476,6 +470,7 @@ function renderAnalytics(history) {
     </div>`;
   }).join('');
 }
+
 
 
 // ══ VOCABULARY TAB ════════════════════════════════════════════════════════════
@@ -676,168 +671,17 @@ document.getElementById('dash-file-input').addEventListener('change', async e =>
 });
 
 
+
 // ══ VOCAB ENRICHMENT ═════════════════════════════════════════════════════════
-// Job/result/apiKey/lastEnrichStatus (terminal only) are persisted per-profile.
-// lastEnrichStatusByProfile (live cache, incl. 'pending' updates) and
-// uploadingProfileIds are transient, in-memory only.
-//
-// enrichment-api.js already resolves every call to a { kind, ...extra } object
-// — this file never inspects an HTTP status code. mapApiKindToRenderStatus()
-// is the ONE place that turns an API result's `kind` into a render `kind`.
-
-function getLanguagePair(profile) {
-  // ASSUMPTION: server's "language_pair" is "{targetLanguage}_{nativeLanguage}",
-  // inferred from the handoff's own "en_pl" example matching this profile's
-  // default native=pl/target=en setup. If the server rejects this with a 400,
-  // the returned detail text lists the actually-supported pairs — verify against that.
-  return `${profile.targetLanguage}_${profile.nativeLanguage}`;
-}
-
-
-async function persistProfile(id) {
-  await chrome.storage.local.set({ profiles: globalProfiles });
-}
-
-
-function isVocabTabActive() {
-  return document.getElementById('tab-vocab').classList.contains('active');
-}
-
-
-// Maps an enrichment-api.js result's `kind` into the render-facing status
-// kind + display fields. Only handles the SHARED, no-side-effect outcomes —
-// callers special-case 'ok'/'pending'/'done' and any kind needing a side
-// effect (promptApiKey, resuming polling) themselves.
-function mapApiKindToRenderStatus(apiResult) {
-  switch (apiResult.kind) {
-    case 'unauthorized':
-      return { kind: 'unauthorized' };
-    case 'not_found':
-      return { kind: 'not_found' };
-    case 'network_error':
-      return { kind: 'network_error' };
-    case 'unsupported_pair':
-      return { kind: 'unsupported_pair', detail: apiResult.detail || '' };
-    case 'job_error':
-      return { kind: 'job_error', message: apiResult.message || '' };
-    case 'still_pending':
-      return { kind: 'pending', phase: '' };
-    case 'invalid_request':
-    case 'server_error':
-    case 'unknown_error':
-    default:
-      return { kind: 'request_error', detail: apiResult.detail || '' };
-  }
-}
-
-
-// Updates the live in-memory status, and — for any TERMINAL kind (everything
-// except 'pending') — mirrors it onto the profile object too, so it survives
-// a refresh independent of whether pendingEnrichJobId is still set.
-// createdAt is inherited from the previous entry unless explicitly overridden,
-// so callers don't need to thread it through every single call site.
-function setEnrichStatus(profileId, kind, extra = {}) {
-  const prev = lastEnrichStatusByProfile[profileId];
-  const createdAt = extra.createdAt ?? prev?.createdAt ?? null;
-  const entry = { kind, ...extra, createdAt };
-  lastEnrichStatusByProfile[profileId] = entry;
-
-  if (kind !== 'pending') {
-    const profile = globalProfiles[profileId];
-    if (profile) {
-      profile.lastEnrichStatus = entry;
-      persistProfile(profileId);
-    }
-  }
-
-  if (profileId === globalActiveId) renderEnrichStatus();
-}
-
-
-function stopEnrichPolling() {
-  clearTimeout(enrichPollTimer);
-  enrichPollTimer = null;
-}
-
-
-function maybeStartEnrichPolling() {
-  stopEnrichPolling();
-  renderEnrichStatus();
-  const profile = globalProfiles[globalActiveId];
-  if (!profile || !profile.pendingEnrichJobId) return;
-  if (!isVocabTabActive()) return;
-  const st = lastEnrichStatusByProfile[profile.id];
-  if (st && st.kind !== 'pending') return; // already resolved — no need to keep polling
-  pollEnrichStatus(profile.id, profile.pendingEnrichJobId);
-}
-
-
-async function autoFetchEnrichResult(profileId, jobId, createdAt) {
-  const profile = globalProfiles[profileId];
-  if (!profile || profile.pendingEnrichJobId !== jobId) return; // superseded/cleared already
-
-  const res = await getJobResult(ENRICHMENT_API_BASE_URL, profile.apiKey, jobId);
-
-  const stillCurrent = globalProfiles[profileId] === profile && profile.pendingEnrichJobId === jobId;
-  if (!stillCurrent) return;
-
-  if (res.kind === 'ok') {
-    profile.pendingEnrichResult = res.csvText;
-    profile.pendingEnrichJobId = null; // cached — cut further server contact for this job
-    await persistProfile(profileId);
-    setEnrichStatus(profileId, 'done', { createdAt });
-    return;
-  }
-
-  // Auto-fetch failed — report the real failure instead of a misleading
-  // "done." The job stays tracked (pendingEnrichJobId untouched), since this
-  // could be transient (e.g. a key that just got revoked) rather than the
-  // job itself being dead.
-  const { kind, ...extra } = mapApiKindToRenderStatus(res);
-  setEnrichStatus(profileId, kind, { ...extra, createdAt });
-}
-
-
-function pollEnrichStatus(profileId, jobId) {
-  const profile = globalProfiles[profileId];
-  if (!profile || profile.pendingEnrichJobId !== jobId) return; // superseded/cleared while awaiting
-
-  getJobStatus(ENRICHMENT_API_BASE_URL, profile.apiKey, jobId).then(res => {
-    const stillCurrent = globalProfiles[profileId] === profile && profile.pendingEnrichJobId === jobId;
-    if (!stillCurrent) return;
-
-    const prevCreatedAt = lastEnrichStatusByProfile[profileId]?.createdAt;
-    const createdAt = prevCreatedAt ?? jobCreatedAt(jobId)?.getTime() ?? null;
-
-    if (res.kind === 'pending') {
-      setEnrichStatus(profileId, 'pending', { phase: res.phase || '', createdAt });
-      if (isVocabTabActive() && profileId === globalActiveId) {
-        enrichPollTimer = setTimeout(() => pollEnrichStatus(profileId, jobId), ENRICH_POLL_INTERVAL_MS);
-      }
-      return;
-    }
-
-    if (res.kind === 'done') {
-      autoFetchEnrichResult(profileId, jobId, createdAt);
-      return;
-    }
-
-    // Every other kind is terminal for this polling loop — no further
-    // scheduling; the user must act (update key) or retry (fresh Enrich click).
-    const { kind, ...extra } = mapApiKindToRenderStatus(res);
-    setEnrichStatus(profileId, kind, { ...extra, createdAt });
-  });
-}
-
+// Enrichment job tracking, polling, and persistence all live in enrichment-controller.js — this section only renders status and wires user actions to it.
 
 function renderEnrichStatus() {
   const bar = document.getElementById('enrich-status');
   const btn = document.getElementById('btn-enrich-vocab');
   const profile = globalProfiles[globalActiveId];
-
   if (!profile) { bar.hidden = true; bar.innerHTML = ''; if (btn) btn.disabled = false; return; }
 
-  if (uploadingProfileIds.has(profile.id)) {
+  if (isUploading(profile.id)) {
     bar.hidden = false;
     bar.className = 'enrich-status enrich-status--pending';
     bar.innerHTML = `<span class="enrich-spinner"></span> ${t('enrich_status_uploading')}`;
@@ -845,21 +689,7 @@ function renderEnrichStatus() {
     return;
   }
 
-  const jobId = profile.pendingEnrichJobId;
-
-  // While a job is actively tracked, the live in-memory status (refreshed by
-  // polling) is the source of truth — defaults to 'pending' with a date
-  // parsed straight from the jobId the moment a job exists but no poll
-  // response has landed yet (e.g. immediately after upload, or right after
-  // a refresh, before the first status check completes).
-  // Once no job is being tracked (never enriched, or already pulled), fall
-  // back to the persisted last-known outcome on the profile itself — this is
-  // what makes "done, ready to pull" (and a plain failed-attempt message)
-  // survive a refresh with zero server contact.
-  const st = jobId
-    ? (lastEnrichStatusByProfile[profile.id] || { kind: 'pending', createdAt: jobCreatedAt(jobId)?.getTime() ?? null })
-    : profile.lastEnrichStatus;
-
+  const st = getEnrichStatus(profile.id);
   if (!st) {
     bar.hidden = true;
     bar.innerHTML = '';
@@ -905,43 +735,6 @@ function renderEnrichStatus() {
 }
 
 
-async function startEnrichJob(profile) {
-  if (!globalRows.length) { alert(t('no_valid_rows')); return; }
-
-  // A fresh click always supersedes whatever came before — clear old job
-  // tracking up front, so a failed retry never leaves stale info lingering
-  // (regardless of whether THIS attempt succeeds or fails).
-  profile.pendingEnrichJobId = null;
-  profile.pendingEnrichResult = null;
-  profile.lastEnrichStatus = null;
-  delete lastEnrichStatusByProfile[profile.id];
-  await persistProfile(profile.id);
-
-  uploadingProfileIds.add(profile.id);
-  renderEnrichStatus();
-
-  const csvText = vocabRowsToText(globalRows, globalColNames, ';');
-  const languagePair = getLanguagePair(profile);
-
-  const res = await uploadVocab(ENRICHMENT_API_BASE_URL, profile.apiKey, csvText, profile.id, profile.name, languagePair);
-  uploadingProfileIds.delete(profile.id);
-
-  if (res.kind === 'ok') {
-    profile.pendingEnrichJobId = res.jobId;
-    profile.pendingEnrichResult = null;
-    await persistProfile(profile.id);
-    const createdAt = jobCreatedAt(res.jobId)?.getTime() ?? Date.now();
-    setEnrichStatus(profile.id, 'pending', { phase: '', createdAt });
-    maybeStartEnrichPolling();
-    return;
-  }
-
-  const { kind, ...extra } = mapApiKindToRenderStatus(res);
-  setEnrichStatus(profile.id, kind, extra);
-  if (kind === 'unauthorized') promptApiKey(profile.id, true);
-}
-
-
 // ── Enrichment confirmation modal ─────────────────────────────────────────────
 const modalEnrichConfirm = document.getElementById('modal-enrich-confirm');
 let enrichConfirmResolve = null;
@@ -970,12 +763,14 @@ document.getElementById('btn-enrich-vocab').addEventListener('click', async () =
 
   const confirmed = await showEnrichConfirmModal();
   if (!confirmed) return;
-
+  
   if (!profile.apiKey) {
     promptApiKey(profile.id, false);
     return;
   }
-  startEnrichJob(profile);
+  const csvText = vocabRowsToText(globalRows, globalColNames, ';');
+  const res = await startEnrichJob(profile.id, csvText);
+  if (res.kind === 'unauthorized') promptApiKey(profile.id, true);
 });
 
 
@@ -1003,20 +798,15 @@ document.getElementById('btn-api-key-confirm').addEventListener('click', async (
   if (!profile) { modal.style.display = 'none'; return; }
 
   profile.apiKey = key;
-  await persistProfile(profileId);
+  await chrome.storage.local.set({ profiles: globalProfiles });
   modal.style.display = 'none';
 
   if (isUpdate) {
-    // The old job/result/status were created under the previous key —
-    // they're orphaned now (the server ties job ownership to the creating key).
-    profile.pendingEnrichJobId = null;
-    profile.pendingEnrichResult = null;
-    profile.lastEnrichStatus = null;
-    delete lastEnrichStatusByProfile[profileId];
-    await persistProfile(profileId);
-    if (profileId === globalActiveId) { stopEnrichPolling(); renderEnrichStatus(); }
+    await resetJobForKeyChange(profileId);
+    if (profileId === globalActiveId) renderEnrichStatus();
   } else if (profileId === globalActiveId) {
-    await startEnrichJob(profile);
+    const csvText = vocabRowsToText(globalRows, globalColNames, ';');
+    await startEnrichJob(profileId, csvText);
   }
 });
 
@@ -1106,56 +896,31 @@ async function saveVocabRowsForProfile(profile, rows, colNames, delim) {
 async function pullEnrichedVocab() {
   const profile = globalProfiles[globalActiveId];
   if (!profile) return;
-  if (!profile.pendingEnrichJobId && !profile.pendingEnrichResult) return;
 
-  let csvText = profile.pendingEnrichResult;
-  if (!csvText) {
-    const res = await getJobResult(ENRICHMENT_API_BASE_URL, profile.apiKey, profile.pendingEnrichJobId);
-
-    if (res.kind !== 'ok') {
-      const { kind, ...extra } = mapApiKindToRenderStatus(res);
-      setEnrichStatus(profile.id, kind, extra);
-      if (kind === 'unauthorized') promptApiKey(profile.id, true);
-      if (kind === 'pending') maybeStartEnrichPolling(); // covers the defensive still_pending case
-      return;
-    }
-
-    csvText = res.csvText;
-    profile.pendingEnrichResult = csvText;
-    // Result is safely cached — cut all further server contact for this job.
-    // The persisted 'done' status (already set by the earlier poll that first
-    // reported it) keeps driving the display via profile.lastEnrichStatus,
-    // completely independent of pendingEnrichJobId from this point on.
-    profile.pendingEnrichJobId = null;
-    stopEnrichPolling();
-    await persistProfile(profile.id);
+  const res = await fetchEnrichedResult(profile.id);
+  if (res.kind !== 'ok') {
+    if (res.kind === 'unauthorized') promptApiKey(profile.id, true);
+    return;
   }
 
   const delim = ';'; // server always returns semicolon-separated per the API contract
-  const { rows: incoming, colNames: incomingCols } = parseVocabFull(csvText, delim);
+  const { rows: incoming, colNames: incomingCols } = parseVocabFull(res.csvText, delim);
   if (!incoming.length) { alert(t('no_valid_rows')); return; }
 
-  // Comparison basis is deliberately the CURRENT in-memory vocab, not the
-  // pre-upload snapshot — the user may have kept editing after clicking
-  // "Enrich vocab", and this diff answers "what changes if I merge now."
   const existing = globalRows;
   const diff = buildDiff(incoming, existing);
   const stats = computeEnrichStats(existing, incoming, diff);
-
   const proceed = await showEnrichDiffModal(stats);
-  if (!proceed) return; // cancel — cached result + persisted 'done' status remain available to revisit
+  if (!proceed) return; // cancel — cached result/persisted 'done' status remain available to revisit
 
   globalRows = incoming;
   globalColNames = incomingCols;
   await saveVocabRowsForProfile(profile, incoming, incomingCols, delim);
   renderVocab(globalRows, globalColNames);
-
-  profile.pendingEnrichResult = null;
-  profile.lastEnrichStatus = null;
-  delete lastEnrichStatusByProfile[profile.id];
-  await persistProfile(profile.id);
+  await clearEnrichmentState(profile.id);
   renderEnrichStatus();
 }
+
 
 
 // ══ MUTED SITES TAB ═══════════════════════════════════════════════════════════

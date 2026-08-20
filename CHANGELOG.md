@@ -7,10 +7,12 @@
 - QOL add info when was the last vocab update - reminder to keep it up to date
 
 ## [0.9.1] - 2026-08-20
+### Added
+- `enrichment-controller.js`: new shared ES module that owns all enrichment job orchestration — polling, scheduling, auto-fetch on completion, and per-profile job/result persistence. Wraps `enrichment-api.js` (the pure HTTP layer, unchanged); nothing else calls `enrichment-api.js` directly anymore.
 ### Changed
-- Added precise hostname for tighter permissions.
-- The enriched vocab result is now fetched and cached automatically as soon as the server reports a job as done, instead of waiting for the user to click "Pull enriched vocab." The button remains manual for reviewing and applying the diff, but no longer triggers the network fetch itself — by the time "done" is shown, the file is already cached and available regardless of subsequent server availability.
-- If the automatic fetch fails (e.g. a revoked key, or the job having expired in the gap between status check and fetch), the real failure is shown instead of a misleading "done" message. The job stays tracked so a transient failure can still resolve on its own via polling or a manual retry.
+- Enrichment polling now continues for as long as the dashboard page is open, regardless of which tab is active — switching to Profiles/Analytics/Blacklist no longer stops a job's status checks. Previously, leaving the Vocab tab silently paused polling, which combined with the Render host's 15-minute idle shutdown could cause a finished job's file to become unreachable before the user returned to the tab.
+- `dashboard.js` no longer tracks job state, timers, or upload/poll/fetch logic itself — it only renders whatever `enrichment-controller.js` reports and calls into it in response to user actions (Enrich click, Pull enriched vocab, API key submit).
+- `dashboard.js` now keeps its in-memory `profiles` in sync via a `chrome.storage.onChanged` listener, rather than only reading storage once at page load. This closes a race where two open dashboard windows (or a stale in-page snapshot) could clobber each other's writes to the shared `profiles` object.
 
 ## [0.9.0] - 2026-08-16
 ### Added
