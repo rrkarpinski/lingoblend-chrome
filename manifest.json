@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LingoBlend",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Substitutes native-language words with target-language words as you browse.",
   "permissions": [
     "storage",
@@ -10,7 +10,7 @@
   ],
   "host_permissions": [
     "http://localhost:8000/*",
-    "https://*.onrender.com/*"
+    "https://lingoblend-processing.onrender.com/*"
   ],
   "icons": {
     "48": "icons/icon48.png",

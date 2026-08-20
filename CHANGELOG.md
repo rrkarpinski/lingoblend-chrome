@@ -4,6 +4,13 @@
 - figure out ES, DE, RU, JP
 - add source word freq stats and implement target-source matching that uses it
 - add option to flag a word in tooltip - as incorrect or just avoid injecting it
+- QOL add info when was the last vocab update - reminder to keep it up to date
+
+## [0.9.1] - 2026-08-20
+### Changed
+- Added precise hostname for tighter permissions.
+- The enriched vocab result is now fetched and cached automatically as soon as the server reports a job as done, instead of waiting for the user to click "Pull enriched vocab." The button remains manual for reviewing and applying the diff, but no longer triggers the network fetch itself — by the time "done" is shown, the file is already cached and available regardless of subsequent server availability.
+- If the automatic fetch fails (e.g. a revoked key, or the job having expired in the gap between status check and fetch), the real failure is shown instead of a misleading "done" message. The job stays tracked so a transient failure can still resolve on its own via polling or a manual retry.
 
 ## [0.9.0] - 2026-08-16
 ### Added

@@ -6,7 +6,8 @@ import { uploadVocab, getJobStatus, getJobResult, jobCreatedAt } from '../enrich
 // ── Enrichment API config ─────────────────────────────────────────────────────
 // Single place to change when moving from local dev to the eventual Render URL.
 // Must also match a host_permissions entry in manifest.json.
-const ENRICHMENT_API_BASE_URL = 'http://localhost:8000';
+// const ENRICHMENT_API_BASE_URL = 'http://localhost:8000'; // local dev
+const ENRICHMENT_API_BASE_URL = 'https://lingoblend-processing.onrender.com';
 const ENRICH_POLL_INTERVAL_MS = 4000;
 
 
@@ -771,6 +772,32 @@ function maybeStartEnrichPolling() {
 }
 
 
+async function autoFetchEnrichResult(profileId, jobId, createdAt) {
+  const profile = globalProfiles[profileId];
+  if (!profile || profile.pendingEnrichJobId !== jobId) return; // superseded/cleared already
+
+  const res = await getJobResult(ENRICHMENT_API_BASE_URL, profile.apiKey, jobId);
+
+  const stillCurrent = globalProfiles[profileId] === profile && profile.pendingEnrichJobId === jobId;
+  if (!stillCurrent) return;
+
+  if (res.kind === 'ok') {
+    profile.pendingEnrichResult = res.csvText;
+    profile.pendingEnrichJobId = null; // cached — cut further server contact for this job
+    await persistProfile(profileId);
+    setEnrichStatus(profileId, 'done', { createdAt });
+    return;
+  }
+
+  // Auto-fetch failed — report the real failure instead of a misleading
+  // "done." The job stays tracked (pendingEnrichJobId untouched), since this
+  // could be transient (e.g. a key that just got revoked) rather than the
+  // job itself being dead.
+  const { kind, ...extra } = mapApiKindToRenderStatus(res);
+  setEnrichStatus(profileId, kind, { ...extra, createdAt });
+}
+
+
 function pollEnrichStatus(profileId, jobId) {
   const profile = globalProfiles[profileId];
   if (!profile || profile.pendingEnrichJobId !== jobId) return; // superseded/cleared while awaiting
@@ -779,9 +806,6 @@ function pollEnrichStatus(profileId, jobId) {
     const stillCurrent = globalProfiles[profileId] === profile && profile.pendingEnrichJobId === jobId;
     if (!stillCurrent) return;
 
-    // Always resolve a createdAt, even on the very first poll after a fresh
-    // page load (when the in-memory cache is empty) — falls back to parsing
-    // it from the jobId itself so the date never briefly goes blank.
     const prevCreatedAt = lastEnrichStatusByProfile[profileId]?.createdAt;
     const createdAt = prevCreatedAt ?? jobCreatedAt(jobId)?.getTime() ?? null;
 
@@ -794,7 +818,7 @@ function pollEnrichStatus(profileId, jobId) {
     }
 
     if (res.kind === 'done') {
-      setEnrichStatus(profileId, 'done', { createdAt });
+      autoFetchEnrichResult(profileId, jobId, createdAt);
       return;
     }
 
@@ -803,8 +827,6 @@ function pollEnrichStatus(profileId, jobId) {
     const { kind, ...extra } = mapApiKindToRenderStatus(res);
     setEnrichStatus(profileId, kind, { ...extra, createdAt });
   });
-  // No .catch() needed — getJobStatus never rejects; network failures already
-  // resolve as { kind: 'network_error' }.
 }
 
 
