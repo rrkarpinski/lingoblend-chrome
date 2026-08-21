@@ -80,6 +80,8 @@
     "enrich_status_uploading": "Przesyłanie słownictwa…",
     "enrich_status_pending": "Wzbogacanie rozpoczęte {date}{phase}",
     "enrich_status_done": "Wzbogacanie zakończone {date}",
+    "enrich_status_done_partial": "Wzbogacanie zakończone {date} — {skipped} słów nie mogło być przetworzonych. Proszę spróbuj ponownie za ok. 30–60 min.",
+    "enrich_processed_of_total": "Wzbogacanie skondensowało słownictwo do {total} słów. Niestety tylko {processed} przetworzono prawidłowo. Spróbuj ponownie póżniej.",
     "btn_pull_enriched": "Pobierz wzbogacone słownictwo",
     "enrich_status_unauthorized": "Klucz API odrzucony.",
     "btn_update_api_key": "Zaktualizuj klucz API",

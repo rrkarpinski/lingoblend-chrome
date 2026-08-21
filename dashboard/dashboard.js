@@ -710,7 +710,10 @@ function renderEnrichStatus() {
     bar.innerHTML = `<span class="enrich-spinner"></span> ${t('enrich_status_pending', { date: dateStr, phase: phaseSuffix })}`;
   } else if (st.kind === 'done') {
     bar.className = 'enrich-status enrich-status--done';
-    bar.innerHTML = `${t('enrich_status_done', { date: dateStr })} <button class="btn-enrich-action" id="btn-enrich-pull">${t('btn_pull_enriched')}</button>`;
+    const doneText = st.partial
+      ? t('enrich_status_done_partial', { date: dateStr, skipped: st.skippedCount })
+      : t('enrich_status_done', { date: dateStr });
+    bar.innerHTML = `${doneText}<button class="btn-enrich-action" id="btn-enrich-pull">${t('btn_pull_enriched')}</button>`;
     document.getElementById('btn-enrich-pull')?.addEventListener('click', pullEnrichedVocab);
   } else if (st.kind === 'unauthorized') {
     bar.className = 'enrich-status enrich-status--error';
@@ -843,12 +846,16 @@ function computeEnrichStats(existing, incoming, diff) {
   const oldAvg = existing.length ? oldTotal / existing.length : 0;
   const newAvg = incoming.length ? newTotal / incoming.length : 0;
   const expansionRate = oldTotal > 0 ? (newTotal / oldTotal) : null;
+  const rowsSkipped = incoming.filter(r => !r.forms || !r.forms.trim()).length;
   return {
     expansionRate, oldAvg, newAvg,
     translationsAdded: newTotal - oldTotal,
     rowsNew: diff.newWords.length,
     rowsModified: diff.updated.length,
-    rowsRemoved: diff.removed.length
+    rowsRemoved: diff.removed.length,
+    rowsProcessed: incoming.length - rowsSkipped,
+    rowsSkipped,
+    rowsTotal: incoming.length
   };
 }
 
@@ -856,6 +863,9 @@ function computeEnrichStats(existing, incoming, diff) {
 function showEnrichDiffModal(stats) {
   const rateStr = stats.expansionRate !== null ? `${stats.expansionRate.toFixed(1)}×` : '—';
   modalEnrichDiffBody.innerHTML = `
+    ${stats.rowsSkipped > 0
+      ? `<div class="enrich-stat-row enrich-stat-row--warn">${t('enrich_processed_of_total', { processed: stats.rowsProcessed, total: stats.rowsTotal })}</div>`
+      : ''}
     <div class="enrich-stat-row">${t('enrich_expansion_rate', { rate: rateStr })}</div>
     <div class="enrich-stat-row">${t('enrich_avg_translations', { old: stats.oldAvg.toFixed(1), new: stats.newAvg.toFixed(1) })}</div>
     <div class="enrich-stat-row">${t('enrich_translations_added', { count: stats.translationsAdded })}</div>

@@ -117,7 +117,7 @@ export async function getJobStatus(baseUrl, apiKey, jobId) {
     case 200: {
       const jobStatus = body?.status;
       if (jobStatus === 'pending') return { kind: 'pending', phase: body.phase || '' };
-      if (jobStatus === 'done') return { kind: 'done' };
+      if (jobStatus === 'done') return { kind: 'done', partial: !!body.partial, skippedCount: body.skipped_count ?? 0 };
       if (jobStatus === 'error') return { kind: 'job_error', message: body.error || '' };
       return { kind: 'unknown_error', detail: `Unexpected status value: ${jobStatus}` };
     }

@@ -6,6 +6,13 @@
 - add option to flag a word in tooltip - as incorrect or just avoid injecting it
 - QOL add info when was the last vocab update - reminder to keep it up to date
 
+## [0.9.2] - 2026-08-20
+### Added
+- Partial-result handling for enrichment jobs: when the server's dictionary scraper hits a rate limit mid-job, it now returns a `done` status with `partial: true` and a `skipped_count` instead of a hard error, along with a CSV containing whatever words it did manage to process plus the rest untouched. The extension surfaces this distinctly — the status bar shows how many words couldn't be processed, and the pull/merge diff modal shows a processed-of-total row — instead of the vague "Done" the partial case would otherwise have looked identical to.
+- Re-uploading a partial result behaves identically to uploading the original file: the server strips incoming CSVs to `target`/`translations` before processing regardless of what other columns are present, so a partial retry loses no words and re-checks everything not yet resolved.
+### Changed
+- `enrichment-api.js`'s `getJobStatus` now passes `partial`/`skippedCount` through on `done` responses; `enrichment-controller.js` carries them through auto-fetch into the persisted `lastEnrichStatus` so the distinction survives a refresh, not just the initial poll.
+
 ## [0.9.1] - 2026-08-20
 ### Added
 - `enrichment-controller.js`: new shared ES module that owns all enrichment job orchestration — polling, scheduling, auto-fetch on completion, and per-profile job/result persistence. Wraps `enrichment-api.js` (the pure HTTP layer, unchanged); nothing else calls `enrichment-api.js` directly anymore.

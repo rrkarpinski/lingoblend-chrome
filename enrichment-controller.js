@@ -44,8 +44,8 @@ import { uploadVocab, getJobStatus, getJobResult, jobCreatedAt } from './enrichm
 
 // Single place to change when moving from local dev to the eventual Render URL.
 // Must also match a host_permissions entry in manifest.json.
-const ENRICHMENT_API_BASE_URL = 'http://localhost:8000'; // local dev
-// const ENRICHMENT_API_BASE_URL = 'https://lingoblend-processing.onrender.com';
+// const ENRICHMENT_API_BASE_URL = 'http://localhost:8000'; // local dev
+const ENRICHMENT_API_BASE_URL = 'https://lingoblend-processing.onrender.com';
 const ENRICH_POLL_INTERVAL_MS = 4000;
 
 // ── Injected context ──────────────────────────────────────────────────────
@@ -207,7 +207,7 @@ function pollEnrichStatus(profileId, jobId) {
       return;
     }
     if (res.kind === 'done') {
-      autoFetchEnrichResult(profileId, jobId, createdAt);
+      autoFetchEnrichResult(profileId, jobId, createdAt, { partial: res.partial, skippedCount: res.skippedCount });
       return;
     }
     // Every other kind is terminal for this polling loop — no further
@@ -222,7 +222,7 @@ function pollEnrichStatus(profileId, jobId) {
  * the result so it survives regardless of subsequent server availability —
  * the "Pull enriched vocab" button then only ever reads the cache.
  */
-async function autoFetchEnrichResult(profileId, jobId, createdAt) {
+async function autoFetchEnrichResult(profileId, jobId, createdAt, doneMeta = {}) {
   const profile = getProfile(profileId);
   if (!profile || profile.pendingEnrichJobId !== jobId) return; // superseded/cleared already
   const apiKey = profile.apiKey;
@@ -236,7 +236,7 @@ async function autoFetchEnrichResult(profileId, jobId, createdAt) {
     current.pendingEnrichResult = res.csvText;
     current.pendingEnrichJobId = null; // cached — cut further server contact for this job
     await persistProfiles();
-    setEnrichStatus(profileId, 'done', { createdAt });
+    setEnrichStatus(profileId, 'done', { createdAt, partial: doneMeta.partial, skippedCount: doneMeta.skippedCount });
     return;
   }
   // Auto-fetch failed — report the real failure instead of a misleading
