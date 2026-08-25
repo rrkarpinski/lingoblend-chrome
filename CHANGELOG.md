@@ -1,10 +1,29 @@
 # LingoBlend — Changelog
 
 ### TODO:
-- figure out ES, DE, RU, JP
+- figure out processing for ES, DE, RU, JP
 - add source word freq stats and implement target-source matching that uses it
 - add option to flag a word in tooltip - as incorrect or just avoid injecting it
 - QOL add info when was the last vocab update - reminder to keep it up to date
+- figure out tokenisation for languages without whitespace or puctuation - currently used got analytics in dashboard
+- ADD CONFIRMATION ON PROFILE DELETE!!!
+
+
+## [0.9.3] -
+### Added
+- RTL handling in `content.js`: replacement spans whose target-language text matches Hebrew/Arabic Unicode ranges now get `dir="rtl"` set automatically, detected from the replacement text itself rather than the profile's language code — no storage/messaging changes needed, and inert for any non-RTL script (existing EN/PL behavior unchanged).
+- Localized soft warning (`native_lang_script_warning`) shown under the native-language field in the new-profile modal when the typed code is `zh`/`ja`/`th` — flags that whitespace-less scripts don't tokenize well as a native language for the Aho-Corasick word-boundary check, without blocking profile creation.
+### Changed
+- profile export file name now includes profile name `lingoblend-profile-{profile.name}-{profile.id}.json`
+- `dashboard.html`: native/target language fields in the new-profile modal changed from fixed `<select>` dropdowns to free-text `<input list="lang-suggestions">` inputs backed by one shared `<datalist>` — any language code can now be entered for either field; the datalist only supplies suggestions, it never restricts input.
+- `dashboard.js`: removed the `LANG_LABELS` lookup table — profile-card language badges now render via `.toUpperCase()` directly, since every existing entry was already just the key uppercased. Scales to arbitrary typed codes with nothing to maintain.
+- renamed `generateUUID()` to `generateProfileId()` to accurately describe that it's a 64-bit token created from 8 random bytes, not a 128-bit RFC4122 UUID
+- added contract comment to `generateProfileId()` to explicitly highlight the required format for server-side verification
+- new shared `utils.js`: `escapeHtml()` moved here (used by `popup.js`/`dashboard.js`); `generateProfileId()` moved here from `dashboard.js` and `background.js`
+- every `innerHTML` assignment in `popup.js`/`dashboard.js` that interpolates a variable (profile names, vocab rows, analytics word lists, muted-site hosts, enrichment status text) now escapes that variable via `escapeHtml()` first
+- `manifest.json`: dropped `tabs` permission (redundant with `content_scripts`' existing `<all_urls>` match + `activeTab`), dropped `web_accessible_resources` (nothing fetches `dashboard.html`/`localization/*.json` from a web-page context), dropped the `localhost:8000` dev entry from `host_permissions`
+### Removed
+- `background.js`: seed-profile loading (`loadSeedProfiles()`, `mergeSeedProfiles()`, and its `onInstalled` call) — leftover from early testing; bundled `profiles/` folder no longer referenced
 
 ## [0.9.2] - 2026-08-20
 ### Added

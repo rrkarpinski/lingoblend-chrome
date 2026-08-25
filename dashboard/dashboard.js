@@ -1,3 +1,4 @@
+import { escapeHtml, generateProfileId } from '../utils.js';
 import { initI18n, setLang, getLang, t, applyStaticI18n } from '../i18n.js';
 import { delimForFile, detectDelimiter, parseVocabFull, buildDiff, applyMerge, vocabRowsToText } from '../vocab-import.js';
 import { initEnrichmentController, getEnrichStatus, isUploading, maybeStartEnrichPolling,
@@ -55,14 +56,6 @@ if (hashParts.includes('new=1')) {
 fetch(chrome.runtime.getURL('manifest.json'))
   .then(r => r.json())
   .then(m => { document.getElementById('version-label').textContent = 'v' + m.version; });
-
-
-// ── UUID helper ───────────────────────────────────────────────────────────────
-function generateUUID() {
-  return [...crypto.getRandomValues(new Uint8Array(8))]
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -133,9 +126,6 @@ async function syncFlatFromProfile(profile) {
 }
 
 
-const LANG_LABELS = { pl: 'PL', en: 'EN', es: 'ES' };
-
-
 function renderProfiles() {
   const container = document.getElementById('profile-cards');
   container.innerHTML = '';
@@ -149,8 +139,8 @@ function renderProfiles() {
     card.className = 'profile-card' + (isActive ? ' active' : '');
 
 
-    const nL = LANG_LABELS[p.nativeLanguage] || p.nativeLanguage.toUpperCase();
-    const tL = LANG_LABELS[p.targetLanguage] || p.targetLanguage.toUpperCase();
+    const nL = p.nativeLanguage.toUpperCase();
+    const tL = p.targetLanguage.toUpperCase();
     const wordCount = p.vocabCount || 0;
     const lastUsed = p.lastUsedAt
       ? new Date(p.lastUsedAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
@@ -160,8 +150,8 @@ function renderProfiles() {
     card.innerHTML = `
       <div class="profile-card-info">
         <div class="profile-card-name-row">
-          <span class="profile-card-name" id="pname-${id}">${p.name}</span>
-          <input class="profile-card-name-input" id="pname-input-${id}" value="${p.name}" hidden>
+          <span class="profile-card-name" id="pname-${id}">${escapeHtml(p.name)}</span>
+          <input class="profile-card-name-input" id="pname-input-${id}" value="${escapeHtml(p.name)}" hidden>
           <span class="btn-edit-name" data-id="${id}" title="${t('tooltip_edit_name')}">✎</span>
         </div>
         <div class="profile-card-meta">
@@ -298,7 +288,7 @@ function exportProfile(id) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `lingoblend-profile-${profile.id.replace(/\s+/g, '_')}.json`;
+  a.download = `lingoblend-profile-${profile.name.replace(/\s+/g, '_')}-${profile.id.replace(/\s+/g, '_')}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -309,6 +299,15 @@ document.getElementById('btn-new-profile').addEventListener('click', () => {
   document.getElementById('new-profile-name').value = '';
   document.getElementById('new-profile-file').value = '';
   document.getElementById('modal-new-profile').style.display = 'flex';
+});
+
+
+const NO_SPACE_SCRIPTS = ['zh', 'ja', 'th'];
+document.getElementById('new-profile-native').addEventListener('input', e => {
+  const code = e.target.value.trim().toLowerCase();
+  const warn = document.getElementById('native-lang-warning');
+  warn.hidden = !NO_SPACE_SCRIPTS.includes(code);
+  if (!warn.hidden) warn.textContent = t('native_lang_script_warning');
 });
 
 
@@ -339,7 +338,7 @@ document.getElementById('btn-create-profile-confirm').addEventListener('click', 
 
 
   const vocabText = vocabRowsToText(rows, colNames, delim);
-  const id = generateUUID();
+  const id = generateProfileId();
   const now = Date.now();
 
 
@@ -446,7 +445,7 @@ function renderAnalytics(history) {
   } else {
     cloud.innerHTML = sortedMissing.map(([w, f]) => {
       const cls = f >= maxFreq * 0.6 ? 'word-chip freq-high' : f >= maxFreq * 0.3 ? 'word-chip freq-med' : 'word-chip';
-      return `<span class="${cls}">${w}</span>`;
+      return `<span class="${cls}">${escapeHtml(w)}</span>`;
     }).join('');
   }
 
@@ -462,11 +461,11 @@ function renderAnalytics(history) {
     const timeStr = dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     const preview = (h.topMissing || []).slice(0, 6).join(', ');
     return `<div class="history-row">
-      <span class="history-hostname">${h.hostname}</span>
+      <span class="history-hostname">${escapeHtml(h.hostname)}</span>
       <span class="history-ts">${dateStr} ${timeStr}</span>
       <span class="history-pct">${t('history_pct_coverage', { pct: h.avgPct })}</span>
       <span class="history-missing">${t('history_high_cov', { count: h.highCoverageCount })}</span>
-      ${preview ? `<span class="history-words">${t('history_missing_links', { list: preview })}</span>` : ''}
+      ${preview ? `<span class="history-words">${t('history_missing_links', { list: escapeHtml(preview) })}</span>` : ''}
     </div>`;
   }).join('');
 }
@@ -497,7 +496,7 @@ function renderVocab(rows, colNames) {
     const realIdx = rows.indexOf(row);
     const tr = document.createElement('tr');
     tr.innerHTML = colNames.map((c, ci) =>
-      `<td class="${ci === 0 ? 'td-target' : 'td-trans'}">${row[c] || ''}</td>`
+      `<td class="${ci === 0 ? 'td-target' : 'td-trans'}">${escapeHtml(row[c]) || ''}</td>`
     ).join('') +
     `<td class="td-actions">
       <button class="btn-edit-row" data-idx="${realIdx}">✎</button>
@@ -530,7 +529,7 @@ function editVocabRow(idx) {
 
 
   tr.innerHTML = globalColNames.map(c =>
-    `<td><input class="edit-input" data-col="${c}" value="${(row[c] || '').replace(/"/g, '&quot;')}" style="width:100%"></td>`
+    `<td><input class="edit-input" data-col="${c}" value="${escapeHtml(row[c])}" style="width:100%"></td>`
   ).join('') +
   `<td class="td-actions">
     <button class="btn-save-row" data-idx="${idx}">${t('btn_save')}</button>
@@ -707,7 +706,7 @@ function renderEnrichStatus() {
   if (st.kind === 'pending') {
     const phaseSuffix = st.phase ? ` — ${st.phase}` : '';
     bar.className = 'enrich-status enrich-status--pending';
-    bar.innerHTML = `<span class="enrich-spinner"></span> ${t('enrich_status_pending', { date: dateStr, phase: phaseSuffix })}`;
+    bar.innerHTML = `<span class="enrich-spinner"></span> ${t('enrich_status_pending', { date: dateStr, phase: escapeHtml(phaseSuffix) })}`;
   } else if (st.kind === 'done') {
     bar.className = 'enrich-status enrich-status--done';
     const doneText = st.partial
@@ -724,13 +723,13 @@ function renderEnrichStatus() {
     bar.innerHTML = t('enrich_status_not_found');
   } else if (st.kind === 'unsupported_pair') {
     bar.className = 'enrich-status enrich-status--error';
-    bar.innerHTML = t('enrich_status_unsupported_pair', { detail: st.detail || '' });
+    bar.innerHTML = t('enrich_status_unsupported_pair', { detail: escapeHtml(st.detail || '') });
   } else if (st.kind === 'job_error') {
     bar.className = 'enrich-status enrich-status--error';
-    bar.innerHTML = t('enrich_status_job_error', { message: st.message || '' });
+    bar.innerHTML = t('enrich_status_job_error', { message: escapeHtml(st.message || '') });
   } else if (st.kind === 'request_error') {
     bar.className = 'enrich-status enrich-status--error';
-    bar.innerHTML = t('enrich_status_request_error', { detail: st.detail || '' });
+    bar.innerHTML = t('enrich_status_request_error', { detail: escapeHtml(st.detail || '') });
   } else if (st.kind === 'network_error') {
     bar.className = 'enrich-status enrich-status--error';
     bar.innerHTML = t('enrich_status_network_error');
@@ -942,8 +941,8 @@ function renderBlacklist(hosts) {
   }
   ul.innerHTML = hosts.map(h =>
     `<li class="blacklist-item">
-      <span class="blacklist-hostname">${h}</span>
-      <button class="btn-whitelist" data-host="${h}">${t('btn_reenable')}</button>
+      <span class="blacklist-hostname">${escapeHtml(h)}</span>
+      <button class="btn-whitelist" data-host="${escapeHtml(h)}">${t('btn_reenable')}</button>
     </li>`
   ).join('');
   ul.querySelectorAll('.btn-whitelist').forEach(btn => {

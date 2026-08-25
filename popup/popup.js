@@ -8,6 +8,7 @@
  */
 
 import { initI18n, t, applyStaticI18n } from '../i18n.js';
+import { escapeHtml } from '../utils.js';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const chkEnabled = document.getElementById('chk-enabled');
@@ -79,7 +80,7 @@ function renderProfileDropdown(profiles, activeId) {
     const p = profiles[id];
     const item = document.createElement('li');
     item.className = 'profile-dropdown-item' + (id === activeId ? ' active' : '');
-    item.innerHTML = `<span class="profile-dot"></span><span>${p.name}</span>`;
+    item.innerHTML = `<span class="profile-dot"></span><span>${escapeHtml(p.name)}</span>`;
     item.addEventListener('click', () => switchProfile(id));
     profileDropdownList.appendChild(item);
   }
@@ -207,9 +208,9 @@ function renderSentenceStats(data) {
 function renderSiteLine(disabled) {
   if (!currentHostname) { siteLine.textContent = ''; return; }
   if (disabled) {
-    siteLine.innerHTML = `<strong>${currentHostname}</strong> ${t('site_muted_suffix')} <span class="site-action whitelist" id="btn-toggle-site">${t('site_reenable')}</span>`;
+    siteLine.innerHTML = `<strong>${escapeHtml(currentHostname)}</strong> ${t('site_muted_suffix')} <span class="site-action whitelist" id="btn-toggle-site">${t('site_reenable')}</span>`;
   } else {
-    siteLine.innerHTML = `<span class="site-action blacklist" id="btn-toggle-site">${t('site_mute_action', { host: currentHostname })}</span>`;
+    siteLine.innerHTML = `<span class="site-action blacklist" id="btn-toggle-site">${t('site_mute_action', { host: escapeHtml(currentHostname) })}</span>`;
   }
   document.getElementById('btn-toggle-site')?.addEventListener('click', toggleSite);
 }

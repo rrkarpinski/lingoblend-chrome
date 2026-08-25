@@ -75,6 +75,7 @@
     "diff_removed": "{count} removed",
     "no_muted_sites": "No muted sites.",
     "btn_reenable": "re-enable",
+    "native_lang_script_warning": "Substitution accuracy may be lower for this language as native (L1).",
     
     "btn_enrich_vocab": "Enrich vocab",
     "enrich_status_uploading": "Uploading vocab…",

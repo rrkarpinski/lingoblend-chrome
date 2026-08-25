@@ -1,15 +1,13 @@
 {
   "manifest_version": 3,
   "name": "LingoBlend",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "Substitutes native-language words with target-language words as you browse.",
   "permissions": [
     "storage",
-    "activeTab",
-    "tabs"
+    "activeTab"
   ],
   "host_permissions": [
-    "http://localhost:8000/*",
     "https://lingoblend-processing.onrender.com/*"
   ],
   "icons": {
@@ -34,11 +32,5 @@
   ],
   "background": {
     "service_worker": "background.js"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["dashboard/dashboard.html", "localization/*.json"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  }
 }

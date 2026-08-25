@@ -75,6 +75,7 @@
     "diff_removed": "{count} usuniętych",
     "no_muted_sites": "Brak wyciszonych stron.",
     "btn_reenable": "włącz ponownie",
+    "native_lang_script_warning": "Dokładność wplatania może być niższa dla tego języka jako ojczystego (L1).",
     
     "btn_enrich_vocab": "Wzbogać słownictwo",
     "enrich_status_uploading": "Przesyłanie słownictwa…",

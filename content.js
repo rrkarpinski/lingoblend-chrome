@@ -261,6 +261,9 @@ function processTextNode(textNode, ac, rand) {
     const span = document.createElement('span');
     span.className = LB_CLASS;
     span.textContent = matchCase(original, entry.target);
+    if (/[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(entry.target)) {
+      span.dir = 'rtl';
+    }
     span.dataset.native      = original;
     span.dataset.rawTransLine = entry.rawTransLine;
     frag.appendChild(span);
